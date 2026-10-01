@@ -3,10 +3,23 @@
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "dist/smart-appointment-system/browser",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/[...path]" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/[...path]"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ],
   "crons": [
-    { "path": "/api/cron/appointment-reminders", "schedule": "0 1 * * *" }
+    {
+      "path": "/api/cron/appointment-reminders",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/appointment-no-shows",
+      "schedule": "0 18 * * *"
+    }
   ]
 }

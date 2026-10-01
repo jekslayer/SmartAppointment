@@ -6,7 +6,7 @@ import { dataRouter } from './routes/data.routes';
 import { usersRouter } from './routes/users.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { checkInWithLiff, lineRouter, lineWebhook, verifyLiffPatientLink } from './routes/line.routes';
-import { runAppointmentReminders } from './services/appointment-reminders.service';
+import { runAppointmentNoShows, runAppointmentReminders } from './services/appointment-reminders.service';
 import { rateLimit, securityHeaders } from './middleware/security.middleware';
 
 dotenv.config();
@@ -51,6 +51,17 @@ export function createApp() {
         return res.status(401).json({ error: { message: 'Unauthorized' } });
       }
       res.json(await runAppointmentReminders());
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/cron/appointment-no-shows', async (req, res, next) => {
+    try {
+      const cronSecret = process.env.CRON_SECRET;
+      const authorization = req.header('authorization') || '';
+      if (!cronSecret || authorization !== `Bearer ${cronSecret}`) {
+        return res.status(401).json({ error: { message: 'Unauthorized' } });
+      }
+      res.json(await runAppointmentNoShows());
     } catch (error) { next(error); }
   });
 

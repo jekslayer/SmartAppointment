@@ -35,10 +35,14 @@ function dateInTimeZone(timeZone: string) {
 
 function dateTimeInTimeZone(timeZone: string) {
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
   }).formatToParts(new Date());
   const value = (type: string) => parts.find(part => part.type === type)?.value || '';
-  return { date: `${value('year')}-${value('month')}-${value('day')}`, time: `${value('hour')}:${value('minute')}` };
+  return {
+    date: `${value('year')}-${value('month')}-${value('day')}`,
+    time: `${value('hour')}:${value('minute')}`,
+    timeWithSeconds: `${value('hour')}:${value('minute')}:${value('second')}`
+  };
 }
 
 function addDays(isoDate: string, days: number) {
@@ -153,4 +157,24 @@ export async function runAppointmentReminders(): Promise<ReminderRunResult> {
     else result.failed += 1;
   }
   return result;
+}
+
+
+export type NoShowRunResult = {
+  cutoffDate: string;
+  updated: number;
+};
+
+/** Marks appointments as no-show as soon as their scheduled local date/time passes
+ * without a successful QR check-in. The Vercel Hobby cron invokes this once per day; Pro/Enterprise can run it more frequently. */
+export async function runAppointmentNoShows(): Promise<NoShowRunResult> {
+  const timeZone = process.env.APPOINTMENT_TIME_ZONE || 'Asia/Bangkok';
+  const now = dateTimeInTimeZone(timeZone);
+  const { data, error } = await getClient().from('appointments')
+    .update({ status: 'no_show', updated_at: new Date().toISOString() })
+    .or(`appointment_date.lt.${now.date},and(appointment_date.eq.${now.date},appointment_time.lt.${now.timeWithSeconds})`)
+    .in('status', ['pending', 'confirmed'])
+    .select('id');
+  if (error) throw error;
+  return { cutoffDate: now.date, updated: data?.length || 0 };
 }

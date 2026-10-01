@@ -9,6 +9,7 @@ const LINE_LOGIN_API = 'https://api.line.me/oauth2/v2.1/verify';
 const channelSecret = () => process.env.LINE_CHANNEL_SECRET || '';
 const channelToken = () => process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
 const liffChannelId = () => process.env.LINE_LIFF_CHANNEL_ID || '';
+const lateCheckInMessage = 'เลยเวลานัดแล้ว ไม่สามารถเช็กอินได้ ระบบบันทึกสถานะไม่มาตามนัด กรุณาติดต่อโรงพยาบาลหรือแผนกที่นัดหมาย';
 
 type LineEvent = {
   type?: string;
@@ -104,6 +105,15 @@ function todayInBangkok() {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
   const value = (type: string) => parts.find(part => part.type === type)?.value || '';
   return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+function bangkokDateTimeNow() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  }).formatToParts(new Date());
+  const value = (type: string) => parts.find(part => part.type === type)?.value || '';
+  return { date: `${value('year')}-${value('month')}-${value('day')}`, time: `${value('hour')}:${value('minute')}:${value('second')}` };
 }
 
 async function linkPatientRichMenu(lineUserId: string) {
@@ -290,11 +300,26 @@ export async function checkInWithLiff(req: Request, res: Response, next: NextFun
         .select('id').eq('patient_id', link.patient_id).eq('appointment_date', appointmentDate).eq('status', 'completed').maybeSingle();
       if (checkedInError) throw checkedInError;
       if (checkedIn) return res.json({ checkedIn: true, alreadyCheckedIn: true });
+      const { data: noShow, error: noShowError } = await client.from('appointments')
+        .select('id').eq('patient_id', link.patient_id).eq('appointment_date', appointmentDate).eq('status', 'no_show')
+        .limit(1).maybeSingle();
+      if (noShowError) throw noShowError;
+      if (noShow) return next(createError(409, lateCheckInMessage));
       return next(createError(404, 'No appointment can be checked in today'));
     }
     const confirmedAppointments = appointments.filter(appointment => appointment.status === 'confirmed');
     const checkInCandidates = confirmedAppointments.length ? confirmedAppointments : appointments;
     if (checkInCandidates.length > 1) return next(createError(409, 'More than one appointment found today; contact staff'));
+
+    const appointment = checkInCandidates[0];
+    const now = bangkokDateTimeNow();
+    if (appointment.appointment_time <= now.time) {
+      const { error: noShowError } = await client.from('appointments')
+        .update({ status: 'no_show', updated_at: new Date().toISOString() })
+        .eq('id', appointment.id).in('status', ['pending', 'confirmed']);
+      if (noShowError) throw noShowError;
+      return next(createError(409, lateCheckInMessage));
+    }
 
     const { data: updated, error: updateError } = await client.from('appointments')
       .update({ status: 'completed', updated_at: new Date().toISOString() })
@@ -330,6 +355,27 @@ async function hasAwaitingReplacementAppointment(patientId: string) {
   return Boolean(data?.length);
 }
 
+async function hasReachedRescheduleLimit(patientId: string, appointmentId: string) {
+  const client = getClient();
+  let childId = appointmentId;
+  // Count the previous appointments in this reschedule chain.
+  // Three prior reschedules means the next request must be handled by staff.
+  for (let count = 0; count < 3; count += 1) {
+    const { data, error } = await client.from('appointments').select('id')
+      .eq('patient_id', patientId)
+      .eq('rescheduled_to_appointment_id', childId)
+      .eq('status', 'rescheduled')
+      .limit(1);
+    if (error) throw error;
+    const parent = data?.[0];
+    if (!parent) return false;
+    childId = parent.id;
+  }
+  return true;
+}
+
+const rescheduleLimitMessage = 'ท่านขอเลื่อนนัดครบ 3 ครั้งแล้ว กรุณาติดต่อโรงพยาบาลหรือแผนกที่นัดหมาย';
+
 function canRequestReschedule(appointmentDate: string) {
   const blockedFrom = new Date(`${todayInBangkok()}T00:00:00.000Z`);
   blockedFrom.setUTCDate(blockedFrom.getUTCDate() + 3);
@@ -361,6 +407,7 @@ async function applyPatientRichMenuPostback(event: LineEvent): Promise<string | 
     return (await hasAwaitingReplacementAppointment(patientId)) ? 'เจ้าหน้าที่กำลังออกใบนัดใหม่ ระบบจะส่งใบนัดใหม่ให้ภายหลัง' : 'ไม่พบใบนัดปัจจุบัน';
   }
   if (!appointment) return (await hasAwaitingReplacementAppointment(patientId)) ? 'ได้รับคำขอเลื่อนนัดแล้ว เจ้าหน้าที่กำลังออกใบนัดใหม่' : 'ไม่พบใบนัดที่สามารถขอเลื่อนได้';
+  if (await hasReachedRescheduleLimit(patientId, appointment.id)) return rescheduleLimitMessage;
   if (!canRequestReschedule(appointment.appointment_date)) return 'ขอเลื่อนนัดได้ก่อนวันนัดอย่างน้อย 3 วัน กรุณาติดต่อแผนก';
   const { data: updated, error } = await getClient().from('appointments').update({ status: 'rescheduled', updated_at: new Date().toISOString() })
     .eq('id', appointment.id).in('status', ['pending', 'confirmed']).select('id').maybeSingle();
@@ -368,7 +415,7 @@ async function applyPatientRichMenuPostback(event: LineEvent): Promise<string | 
   return updated ? 'บันทึกคำขอเลื่อนนัดแล้ว เจ้าหน้าที่จะออกใบนัดใหม่และส่งให้ทาง LINE' : 'สถานะใบนัดเปลี่ยนแล้ว กรุณาลองใหม่อีกครั้ง';
 }
 
-async function applyAppointmentPostback(event: LineEvent): Promise<'confirmed' | 'rescheduled' | null> {
+async function applyAppointmentPostback(event: LineEvent): Promise<'confirmed' | 'rescheduled' | 'reschedule_limit_reached' | null> {
   const lineUserId = event.source?.userId;
   const data = event.postback?.data;
   if (!lineUserId || !data) return null;
@@ -386,6 +433,9 @@ async function applyAppointmentPostback(event: LineEvent): Promise<'confirmed' |
   if (error || !appointment?.patient_id) return null;
   const link = await getPatientLineLink(appointment.patient_id);
   if (link?.line_user_id !== lineUserId) return null;
+  if (status === 'rescheduled' && await hasReachedRescheduleLimit(appointment.patient_id, appointment.id)) {
+    return 'reschedule_limit_reached';
+  }
   // First valid response wins. The status predicate makes this atomic, so a
   // repeated tap or a competing confirm/reschedule tap cannot overwrite it.
   const { data: updatedAppointment, error: updateError } = await client.from('appointments')
@@ -418,7 +468,9 @@ export async function lineWebhook(req: Request, res: Response, next: NextFunctio
         if (status && event.replyToken) {
           const message = status === 'confirmed'
             ? 'บันทึกการยืนยันนัดเรียบร้อยแล้ว'
-            : 'บันทึกคำขอเลื่อนนัดเรียบร้อยแล้ว เจ้าหน้าที่จะออกใบนัดใหม่ให้';
+            : status === 'reschedule_limit_reached'
+              ? rescheduleLimitMessage
+              : 'บันทึกคำขอเลื่อนนัดเรียบร้อยแล้ว เจ้าหน้าที่จะออกใบนัดใหม่ให้';
           try {
             await lineRequest('/reply', { replyToken: event.replyToken, messages: [{ type: 'text', text: message }] });
           } catch (replyError) {
