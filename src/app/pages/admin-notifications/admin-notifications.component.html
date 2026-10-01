@@ -1,0 +1,80 @@
+<div class="admin-notifications-container">
+  <header class="admin-header">
+    <div class="header-content">
+      <div class="logo-wrapper">
+        <div class="logo-icon">A</div>
+        <div class="logo-text">
+          <h1 class="header-title">Admin Panel</h1>
+          <p class="header-subtitle">ระบบจัดการการแจ้งเตือน</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <span class="user-label">ผู้ดูแลระบบ</span>
+        <button class="btn-logout" type="button" (click)="logout()">ออกจากระบบ</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="admin-main">
+    <nav class="tabs" aria-label="เมนูผู้ดูแลระบบ">
+      <button class="tab" type="button" (click)="setActiveTab('overview')">ภาพรวม</button>
+      <button class="tab" type="button" (click)="setActiveTab('capacity')">ตั้งค่าจำนวนรับนัด</button>
+      <button class="tab active" type="button">การแจ้งเตือน</button>
+      <button class="tab" type="button" (click)="setActiveTab('users')">ผู้ใช้งานระบบ</button>
+    </nav>
+
+    <form class="settings-form" (ngSubmit)="saveSettings()">
+      <section class="message-card">
+        <h2>ข้อความใบนัด</h2>
+        <p class="card-description">ข้อความที่ส่งให้ผู้ป่วยเมื่อสร้างใบนัด</p>
+        <textarea
+          class="message-textarea"
+          aria-label="ข้อความใบนัด"
+          [ngModel]="appointmentMessage()"
+          (ngModelChange)="appointmentMessage.set($event)"
+          name="appointmentMessage"
+        ></textarea>
+      </section>
+
+      <section class="message-card">
+        <h2>ข้อความแจ้งเตือนก่อนนัด</h2>
+        <p class="card-description">ข้อความแจ้งเตือนที่ส่งก่อนถึงวันนัด</p>
+        <textarea
+          class="message-textarea reminder-textarea"
+          aria-label="ข้อความแจ้งเตือนก่อนนัด"
+          [ngModel]="reminderMessage()"
+          (ngModelChange)="reminderMessage.set($event)"
+          name="reminderMessage"
+        ></textarea>
+
+        <div class="days-setting">
+          <label for="reminder-days">ส่งก่อนนัดกี่วัน</label>
+          <input
+            id="reminder-days"
+            class="days-input"
+            type="number"
+            min="0"
+            max="365"
+            step="1"
+            [ngModel]="reminderDays()"
+            (ngModelChange)="reminderDays.set($event)"
+            name="reminderDays"
+          />
+          <span>วัน</span>
+        </div>
+        <p class="setting-hint">ระบบจะแจ้งข้อความเตือนล่วงหน้าตามจำนวนวันที่กำหนด</p>
+
+        <div class="form-footer">
+          <button class="save-button" type="submit" [disabled]="isSaving()">
+            {{ isSaving() ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า' }}
+          </button>
+          @if (saveMessage()) {
+            <span class="save-message" [class.error]="saveMessage().includes('กรุณา') || saveMessage().includes('ไม่สามารถ')">
+              {{ saveMessage() }}
+            </span>
+          }
+        </div>
+      </section>
+    </form>
+  </main>
+</div>

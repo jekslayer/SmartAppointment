@@ -1,0 +1,64 @@
+@if (isVisible()) {
+  <div class="dialog-overlay" (click)="onOverlayClick()">
+    <div class="dialog-container" (click)="$event.stopPropagation()">
+      <div class="dialog-icon" [style.color]="iconColor()">
+        @switch (iconType()) {
+          @case ('check-circle') {
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M9 12l2 2 4-4"></path>
+            </svg>
+          }
+          @case ('x-circle') {
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="15" y1="9" x2="9" y2="15"></line>
+              <line x1="9" y1="9" x2="15" y2="15"></line>
+            </svg>
+          }
+          @case ('alert-triangle') {
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+          }
+          @case ('help-circle') {
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+          }
+          @default {
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+          }
+        }
+      </div>
+
+      <div class="dialog-content">
+        <h3 class="dialog-title">{{ config()?.title }}</h3>
+        <p class="dialog-message">{{ config()?.message }}</p>
+      </div>
+
+      <div class="dialog-actions">
+        @if (config()?.type === 'confirm') {
+          <button class="dialog-btn dialog-btn-cancel" (click)="onCancel()">
+            {{ config()?.cancelText || 'ยกเลิก' }}
+          </button>
+          <button class="dialog-btn dialog-btn-confirm" [class.dialog-btn-danger]="config()?.destructive" (click)="onConfirm()">
+            {{ config()?.confirmText || 'ยืนยัน' }}
+          </button>
+        } @else {
+          <button class="dialog-btn dialog-btn-confirm" (click)="onConfirm()">
+            {{ config()?.confirmText || 'ตกลง' }}
+          </button>
+        }
+      </div>
+    </div>
+  </div>
+}

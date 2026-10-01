@@ -1,0 +1,7 @@
+:host { display: block; min-height: 100vh; background: #eff6ff; color: #172554; }
+.checkin-page { min-height: 100vh; display: grid; place-items: center; padding: 1.5rem; }
+.checkin-card { width: min(100%, 28rem); background: #fff; border-radius: 1rem; padding: 2rem; box-shadow: 0 12px 32px rgb(30 64 175 / 12%); text-align: center; }
+.eyebrow { color: #2563eb; font-size: .72rem; font-weight: 700; letter-spacing: .12em; }
+h1 { margin: .45rem 0 1.25rem; font-size: 1.65rem; }.state { padding: 1rem; border-radius: .55rem; background: #dbeafe; }
+.success { color: #166534; background: #dcfce7; }.error { color: #b91c1c; background: #fee2e2; }
+button { width: 100%; margin-top: 1rem; border: 0; border-radius: .55rem; padding: .8rem; background: #2563eb; color: #fff; font: inherit; font-weight: 700; }

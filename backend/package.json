@@ -1,0 +1,27 @@
+{
+  "name": "smart-appointment-backend",
+  "version": "1.0.0",
+  "description": "Backend API for Smart Appointment System",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "check:env": "tsx src/scripts/check-env.ts",
+    "setup:patient-rich-menu": "tsx src/scripts/create-patient-rich-menu.ts",
+    "install:deps": "npm install @supabase/supabase-js express cors dotenv && npm install -D typescript @types/node @types/express @types/cors tsx"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.9.2"
+  }
+}

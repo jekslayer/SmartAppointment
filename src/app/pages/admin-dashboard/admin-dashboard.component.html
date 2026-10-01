@@ -1,0 +1,91 @@
+<div class="admin-dashboard-container">
+  <header class="admin-header">
+    <div class="header-content">
+      <div class="header-left">
+        <div class="logo-wrapper">
+          <div class="logo-icon">A</div>
+          <div class="logo-text">
+            <h1 class="header-title">Admin Panel</h1>
+            <p class="header-subtitle">ภาพรวมการนัดหมาย</p>
+          </div>
+        </div>
+      </div>
+      <div class="header-right">
+        <span class="user-label">ผู้ดูแลระบบ</span>
+        <button class="btn btn-logout" (click)="logout()">ออกจากระบบ</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="admin-main">
+    <section class="tabs-section">
+      <div class="tabs">
+        <button class="tab active">ภาพรวม</button>
+        <button class="tab" (click)="setActiveTab('capacity')">ตั้งค่าจำนวนรับนัด</button>
+        <button class="tab" (click)="setActiveTab('notifications')">การแจ้งเตือน</button>
+        <button class="tab" (click)="setActiveTab('users')">ผู้ใช้งานระบบ</button>
+      </div>
+    </section>
+
+    <section class="top-section">
+      <div class="date-card">
+        <label class="date-label" for="appointment-date">เลือกวันที่:</label>
+        <input id="appointment-date" type="date" [value]="dateInputValue()" (change)="onDateChange($event)" class="date-input" />
+        <button type="button" class="btn-report" (click)="downloadDailyReport()">ดาวน์โหลด PDF</button>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-content">
+            <div class="stat-label">ใบนัดของวันที่เลือก</div>
+            <div class="stat-value">{{ stats().todayAppointments }}</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-content">
+            <div class="stat-label">แผนกที่มีนัด</div>
+            <div class="stat-value">{{ stats().totalDepartments }}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="content-section">
+      <div class="charts-row">
+        <div class="chart-card">
+          <h3 class="chart-title">จำนวนการนัดหมาย 7 วันล่าสุด</h3>
+          <div class="bar-chart">
+            @for (item of chartData(); track item.date) {
+              <div class="bar-item">
+                <div class="bar-wrapper"><div class="bar" [style.height.%]="getChartBarHeight(item.count)"><span class="bar-value">{{ item.count }}</span></div></div>
+                <div class="bar-label">{{ formatChartDate(item.date) }}</div>
+              </div>
+            }
+          </div>
+        </div>
+        <div class="chart-card">
+          <h3 class="chart-title">สถานะใบนัดของวันที่เลือก</h3>
+          <div class="status-chart">
+            @for (stat of statusStats(); track stat.label) {
+              <div class="status-item">
+                <div class="status-info"><div class="status-dot" [style.background]="stat.color"></div><span class="status-label">{{ stat.label }}</span></div>
+                <div class="status-value">{{ stat.count }}</div>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+      <div class="department-list-card">
+        <h3 class="card-title">แผนกที่มีนัด</h3>
+        @if (departmentStats().length > 0) {
+          <div class="department-list">
+            @for (dept of departmentStats(); track dept.name; let idx = $index) {
+              <div class="department-item"><div class="dept-number">{{ idx + 1 }}.</div><div class="dept-name">{{ dept.name }}</div><div class="dept-count">{{ dept.count }} นัด</div></div>
+            }
+          </div>
+        } @else {
+          <div class="empty-state"><p class="empty-text">ไม่มีข้อมูลนัดหมาย</p></div>
+        }
+      </div>
+    </section>
+  </main>
+</div>

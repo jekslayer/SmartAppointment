@@ -1,0 +1,25 @@
+<div class="admin-departments-container">
+  <header class="admin-header"><div class="header-content"><div class="header-left"><div class="logo-wrapper"><div class="logo-icon">A</div><div class="logo-text"><h1 class="header-title">Admin Panel</h1><p class="header-subtitle">ตั้งค่าจำนวนรับนัดของแพทย์</p></div></div></div><div class="header-right"><span class="user-label">ผู้ดูแลระบบ</span><button class="btn btn-logout" (click)="logout()">ออกจากระบบ</button></div></div></header>
+  <main class="admin-main">
+    <nav class="tabs-section" aria-label="เมนูผู้ดูแลระบบ"><div class="tabs"><button class="tab" (click)="navigate('overview')">ภาพรวม</button><button class="tab active" aria-current="page">ตั้งค่าจำนวนรับนัด</button><button class="tab" (click)="navigate('notifications')">การแจ้งเตือน</button><button class="tab" (click)="navigate('users')">ผู้ใช้งานระบบ</button></div></nav>
+    <section class="capacity-card" aria-labelledby="capacity-title">
+      <div class="capacity-card-header"><div><p class="eyebrow">Appointment capacity</p><h2 id="capacity-title">กำหนดจำนวนรับนัดต่อวัน</h2><p class="capacity-description">ปรับจำนวนผู้ป่วยสูงสุดที่แพทย์แต่ละท่านรับตรวจได้ในหนึ่งวัน แล้วกดบันทึกเฉพาะรายการที่แก้ไข</p></div><div class="doctor-summary" aria-label="จำนวนแพทย์ทั้งหมด"><span class="summary-number">{{ doctors().length }}</span><span class="summary-label">แพทย์ที่เปิดรับนัด</span></div></div>
+      @if (isLoading()) {
+        <div class="state-message" role="status">กำลังโหลดข้อมูลจำนวนรับนัด...</div>
+      } @else if (doctors().length === 0) {
+        <div class="state-message">ไม่พบรายชื่อแพทย์ที่เปิดรับนัด</div>
+      } @else {
+        <div class="capacity-list" role="list">
+          <div class="capacity-list-heading" aria-hidden="true"><span>แพทย์และแผนก</span><span>จำนวนรับนัดต่อวัน</span><span>การดำเนินการ</span></div>
+          @for (doctor of doctors(); track doctor.id) {
+            <article class="capacity-row" [class.is-dirty]="capacities()[doctor.id] !== doctor.maxPatientsPerDay" role="listitem">
+              <div class="doctor-details"><div class="doctor-avatar" aria-hidden="true">{{ doctor.name.charAt(0) }}</div><div><h3>{{ doctor.name }}</h3><span class="department-badge">{{ doctor.departmentName }}</span></div></div>
+              <label class="capacity-control"><span class="mobile-label">จำนวนรับนัดต่อวัน</span><input class="form-input-small form-input-number" type="number" min="1" [ngModel]="capacities()[doctor.id]" (ngModelChange)="setCapacity(doctor.id, +$event)" [attr.aria-label]="'จำนวนรับนัดต่อวันของ ' + doctor.name" /><span class="capacity-unit">คน / วัน</span></label>
+              <div class="row-actions">@if (capacities()[doctor.id] !== doctor.maxPatientsPerDay) { <span class="changed-label">มีการแก้ไข</span> }<button class="btn btn-primary save-button" [disabled]="isSaving() || capacities()[doctor.id] === doctor.maxPatientsPerDay" (click)="saveCapacity(doctor)">บันทึก</button></div>
+            </article>
+          }
+        </div>
+      }
+    </section>
+  </main>
+</div>

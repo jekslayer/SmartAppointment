@@ -1,0 +1,185 @@
+<!-- Change Password View -->
+@if (mustChangePassword()) {
+  <div class="min-h-screen bg-gradient-change flex-center p-4 relative overflow-hidden">
+    <!-- Decorative circles -->
+    <div class="decorative-circle circle-1-change"></div>
+    <div class="decorative-circle circle-2-change"></div>
+
+    <div class="card">
+      <div class="card-header text-center">
+        <div class="icon-container bg-gradient-change-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        <h2 class="card-title">ตั้งรหัสผ่านใหม่</h2>
+        <p class="card-description">
+          เพื่อความปลอดภัย กรุณาเปลี่ยนรหัสผ่าน<br/>
+          ก่อนเข้าใช้งานระบบครั้งแรก
+        </p>
+      </div>
+
+      <div class="card-content">
+        <form (ngSubmit)="handleChangePassword($event)" class="form">
+          <div class="form-group">
+            <label class="form-label">รหัสผ่านใหม่</label>
+            <div class="input-wrapper">
+            <input
+              [type]="showNewPassword() ? 'text' : 'password'"
+              [value]="newPassword()"
+              (input)="newPassword.set($any($event.target).value)"
+              placeholder="อย่างน้อย 6 ตัวอักษร"
+              class="form-input"
+              required
+            />
+            <button type="button" class="password-toggle" (click)="showNewPassword.set(!showNewPassword())" [attr.aria-label]="showNewPassword() ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'" [attr.aria-pressed]="showNewPassword()">
+              @if (showNewPassword()) { <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.2 12s3.4-6 9.8-6 9.8 6 9.8 6-3.4 6-9.8 6-9.8-6-9.8-6Z"/><circle cx="12" cy="12" r="2.8"/></svg> }
+              @else { <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 6.2A10.8 10.8 0 0 1 12 6c6.4 0 9.8 6 9.8 6a18 18 0 0 1-3.3 3.8M6.2 8.1A18.4 18.4 0 0 0 2.2 12s3.4 6 9.8 6c1.4 0 2.6-.3 3.6-.7M9.7 9.7a3.3 3.3 0 0 0 4.6 4.6"/></svg> }
+            </button>
+            </div>
+            <p class="form-hint">ควรมีอย่างน้อย 6 ตัวอักษร</p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">ยืนยันรหัสผ่านใหม่</label>
+            <div class="input-wrapper">
+            <input
+              [type]="showConfirmPassword() ? 'text' : 'password'"
+              [value]="confirmPassword()"
+              (input)="confirmPassword.set($any($event.target).value)"
+              placeholder="กรอกรหัสผ่านอีกครั้ง"
+              class="form-input"
+              required
+            />
+            <button type="button" class="password-toggle" (click)="showConfirmPassword.set(!showConfirmPassword())" [attr.aria-label]="showConfirmPassword() ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'" [attr.aria-pressed]="showConfirmPassword()">
+              @if (showConfirmPassword()) { <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.2 12s3.4-6 9.8-6 9.8 6 9.8 6-3.4 6-9.8 6-9.8-6-9.8-6Z"/><circle cx="12" cy="12" r="2.8"/></svg> }
+              @else { <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 6.2A10.8 10.8 0 0 1 12 6c6.4 0 9.8 6 9.8 6a18 18 0 0 1-3.3 3.8M6.2 8.1A18.4 18.4 0 0 0 2.2 12s3.4 6 9.8 6c1.4 0 2.6-.3 3.6-.7M9.7 9.7a3.3 3.3 0 0 0 4.6 4.6"/></svg> }
+            </button>
+            </div>
+          </div>
+
+          @if (error()) {
+            <div class="alert alert-error">
+              <span class="alert-text">{{ error() }}</span>
+            </div>
+          }
+
+          <button 
+            type="submit" 
+            class="btn btn-change"
+            [disabled]="isLoading()"
+          >
+            @if (isLoading()) {
+              <svg class="spinner" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>กำลังบันทึก...</span>
+            } @else {
+              <svg xmlns="http://www.w3.org/2000/svg" class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+              <span>ยืนยันรหัสผ่านใหม่</span>
+            }
+          </button>
+        </form>
+
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Login View -->
+@if (!mustChangePassword()) {
+  <div class="min-h-screen bg-gradient-login flex-center p-4 relative overflow-hidden">
+    <!-- Decorative circles -->
+    <div class="decorative-circle circle-1-login"></div>
+    <div class="decorative-circle circle-2-login"></div>
+    <div class="decorative-circle circle-3-login"></div>
+
+    <div class="card">
+      <div class="card-header text-center">
+        <div class="icon-container bg-gradient-login-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+          </svg>
+        </div>
+        <h2 class="card-title gradient-text">ระบบใบนัดอัจฉริยะ</h2>
+        <p class="card-subtitle">Smart Appointment System</p>
+        <p class="card-description-small">เข้าสู่ระบบสำหรับเจ้าหน้าที่โรงพยาบาล</p>
+      </div>
+
+      <div class="card-content">
+        <form (ngSubmit)="handleLogin($event)" class="form">
+          <div class="form-group">
+            <label class="form-label">รหัสพนักงาน</label>
+            <div class="input-wrapper">
+              <input
+                [value]="employeeId()"
+                (input)="employeeId.set($any($event.target).value)"
+                placeholder="กรอกรหัสพนักงาน"
+                class="form-input"
+                required
+              />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">รหัสผ่าน</label>
+            <div class="input-wrapper">
+              <input
+                [type]="showPassword() ? 'text' : 'password'"
+                [value]="password()"
+                (input)="password.set($any($event.target).value)"
+                placeholder="กรอกรหัสผ่าน"
+                class="form-input"
+                required
+              />
+              <button type="button" class="password-toggle" (click)="showPassword.set(!showPassword())" [attr.aria-label]="showPassword() ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'" [attr.aria-pressed]="showPassword()">
+                @if (showPassword()) { <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.2 12s3.4-6 9.8-6 9.8 6 9.8 6-3.4 6-9.8 6-9.8-6-9.8-6Z"/><circle cx="12" cy="12" r="2.8"/></svg> }
+                @else { <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 6.2A10.8 10.8 0 0 1 12 6c6.4 0 9.8 6 9.8 6a18 18 0 0 1-3.3 3.8M6.2 8.1A18.4 18.4 0 0 0 2.2 12s3.4 6 9.8 6c1.4 0 2.6-.3 3.6-.7M9.7 9.7a3.3 3.3 0 0 0 4.6 4.6"/></svg> }
+              </button>
+            </div>
+          </div>
+
+          @if (error()) {
+            <div class="alert alert-error">
+              <span class="alert-text">{{ error() }}</span>
+            </div>
+          }
+
+          <button 
+            type="submit" 
+            class="btn btn-login"
+            [disabled]="isLoading()"
+          >
+            @if (isLoading()) {
+              <svg class="spinner" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>กำลังเข้าสู่ระบบ...</span>
+            } @else {
+              <svg xmlns="http://www.w3.org/2000/svg" class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                <polyline points="10 17 15 12 10 7"></polyline>
+                <line x1="15" y1="12" x2="3" y2="12"></line>
+              </svg>
+              <span>เข้าสู่ระบบ</span>
+            }
+          </button>
+        </form>
+
+        <div class="footer footer-centered">
+          <p class="footer-text">ลืมรหัสผ่าน? ติดต่อผู้ดูแลระบบ</p>
+          <a (click)="navigateToAdminLogin()" class="footer-link footer-link-centered">
+            เข้าสู่ระบบผู้ดูแล →
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+}

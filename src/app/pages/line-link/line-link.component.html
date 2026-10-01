@@ -1,0 +1,30 @@
+<main class="link-page">
+  <section class="link-card">
+    <p class="eyebrow">SMART APPOINTMENT</p>
+    <h1>เชื่อมบัญชี LINE</h1>
+    <p class="intro">ยืนยันข้อมูลเพื่อรับใบนัดและข้อความเตือนผ่าน LINE</p>
+
+    @if (checkInMode()) { <p class="intro">กำลังเช็กอินนัดหมาย</p> }
+    @if (loading()) {
+      <p class="state">กำลังเชื่อมต่อ LINE...</p>
+    } @else if (error() && !ready()) {
+      <p class="state error" role="alert">{{ error() }}</p>
+    } @else if (success()) {
+      @if (checkInMode()) { <div class="state success" role="status">{{ alreadyCheckedIn() ? 'เช็กอินรายการนี้แล้ว' : 'เช็กอินสำเร็จแล้ว กรุณารอเรียกคิว' }}</div> }
+      @if (!checkInMode()) { <div class="state success" role="status">เชื่อมบัญชี LINE สำเร็จแล้ว คุณสามารถปิดหน้านี้ได้</div> }
+    } @else {
+      <form (ngSubmit)="linkPatient()">
+        <label for="id-card-last4">เลขบัตรประชาชน 4 ตัวท้าย</label>
+        <input id="id-card-last4" name="idCardLast4" [(ngModel)]="idCardLast4" autocomplete="off" inputmode="numeric" pattern="[0-9]{4}" required maxlength="4" placeholder="เช่น 1234">
+
+        <label for="date-of-birth">วันเดือนปีเกิด</label>
+        <input id="date-of-birth" name="dateOfBirth" [(ngModel)]="dateOfBirth" type="date" required>
+
+        @if (error()) { <p class="form-error" role="alert">{{ error() }}</p> }
+        <button type="submit" [disabled]="submitting() || !idCardLast4.trim() || !dateOfBirth">
+          {{ submitting() ? 'กำลังเชื่อมบัญชี...' : 'ยืนยันและเชื่อมบัญชี' }}
+        </button>
+      </form>
+    }
+  </section>
+</main>

@@ -1,0 +1,490 @@
+<div class="appointment-container">
+  <!-- Header -->
+  <header class="appointment-header">
+    <button class="btn-back" (click)="goBack()">
+      <svg xmlns="http://www.w3.org/2000/svg" class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="19" y1="12" x2="5" y2="12"></line>
+        <polyline points="12 19 5 12 12 5"></polyline>
+      </svg>
+    </button>
+    <div class="header-content">
+      <h1 class="header-title">ออกใบนัดใหม่</h1>
+      <p class="header-subtitle">สร้างใบนัดและส่งใหม่ผู้ป่วยอีกครั้ง</p>
+    </div>
+  </header>
+
+  <!-- Steps Indicator -->
+  <div class="steps-container">
+    <div class="step" [class.active]="currentStep() === 1" [class.completed]="currentStep() > 1">
+      <div class="step-circle">
+        @if (currentStep() > 1) {
+          <svg xmlns="http://www.w3.org/2000/svg" class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        } @else {
+          <span>1</span>
+        }
+      </div>
+      <span class="step-label">ค้นหา/เพิ่มผู้ป่วย</span>
+    </div>
+
+    <div class="step-divider"></div>
+
+    <div class="step" [class.active]="currentStep() === 2" [class.completed]="currentStep() > 2">
+      <div class="step-circle">
+        @if (currentStep() > 2) {
+          <svg xmlns="http://www.w3.org/2000/svg" class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        } @else {
+          <span>2</span>
+        }
+      </div>
+      <span class="step-label">กรอกข้อมูลนัด</span>
+    </div>
+
+    <div class="step-divider"></div>
+
+    <div class="step" [class.active]="currentStep() === 3">
+      <div class="step-circle">
+        <span>3</span>
+      </div>
+      <span class="step-label">ส่งใบนัด</span>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <main class="appointment-main">
+    <!-- Step 1: Search Patient -->
+    @if (currentStep() === 1) {
+      <div class="step-content">
+        <div class="search-section">
+          <div class="search-icon-wrapper">
+            <svg xmlns="http://www.w3.org/2000/svg" class="search-icon-large" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <path d="m21 21-4.35-4.35"></path>
+            </svg>
+          </div>
+          <h2 class="search-title">ค้นหาผู้ป่วย</h2>
+          <p class="search-description">ค้นหาจากชื่อ-นามสกุล, HN หรือเลขบัตรประชาชน</p>
+
+          <div class="search-input-wrapper">
+            <svg xmlns="http://www.w3.org/2000/svg" class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <input
+              type="text"
+              [value]="searchQuery()"
+              (input)="searchQuery.set($any($event.target).value); onSearch()"
+              placeholder="ค้นหาจาก HN, ชื่อ-นามสกุล หรือเลขบัตรประชาชน"
+              class="search-input"
+              autofocus
+            />
+            <button class="btn-search" (click)="onSearch()">ค้นหา</button>
+          </div>
+
+          <!-- Search Results -->
+          @if (isSearching()) {
+            <div class="loading-state">
+              <div class="spinner-large"></div>
+              <p>กำลังค้นหา...</p>
+            </div>
+          } @else if (searchResults().length > 0) {
+            <div class="results-list">
+              @for (patient of searchResults(); track patient.id) {
+                <div class="patient-card" (click)="selectPatient(patient)">
+                  <div class="patient-avatar">
+                    <span>{{ getInitials(patient.full_name) }}</span>
+                  </div>
+                  <div class="patient-info">
+                    <h3 class="patient-name">{{ patient.full_name }}</h3>
+                    <div class="patient-details">
+                      <span class="detail-item">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="detail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="9" cy="7" r="4"></circle>
+                          <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                        </svg>
+                        HN: {{ patient.hn }}
+                      </span>
+                      <span class="detail-item">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="detail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                        </svg>
+                        {{ patient.id_card }}
+                      </span>
+                    </div>
+                  </div>
+                  <button class="btn-view-history" (click)="viewPatientHistory(patient, $event)">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="btn-history-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="16" y1="13" x2="8" y2="13"></line>
+                      <line x1="16" y1="17" x2="8" y2="17"></line>
+                      <polyline points="10 9 9 9 8 9"></polyline>
+                    </svg>
+                    ดูประวัติ
+                  </button>
+                </div>
+              }
+            </div>
+          } @else if (searchQuery().length >= 2) {
+            <div class="empty-results">
+              <svg xmlns="http://www.w3.org/2000/svg" class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+              </svg>
+              <p>ไม่พบผู้ป่วยที่ค้นหา</p>
+            </div>
+          }
+        </div>
+      </div>
+    }
+
+    <!-- Step 2: Appointment Details -->
+    @if (currentStep() === 2) {
+      <div class="step-content">
+        <div class="form-section">
+          @if (selectedPatient()) {
+            <div class="selected-patient-info">
+              <div class="patient-avatar-sm">
+                {{ getInitials(selectedPatient()!.full_name) }}
+              </div>
+              <div>
+                <div class="patient-name-sm">{{ selectedPatient()!.full_name }}</div>
+                <div class="patient-hn-sm">HN: {{ selectedPatient()!.hn }}</div>
+              </div>
+            </div>
+          }
+
+          <form class="appointment-form">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="label-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                  </svg>
+                  วันที่นัด <span class="required">*</span>
+                </label>
+                <input
+                  type="date"
+                  class="form-input"
+                  [value]="appointmentData().appointment_date"
+                  [min]="minDate()"
+                  (change)="onDateChange($any($event.target).value)"
+                  name="appointment_date"
+                  placeholder="วว/ดด/ปปปป"
+                  required
+                />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="label-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                  </svg>
+                  เวลานัด <span class="required">*</span>
+                </label>
+                <select 
+                  class="form-select" 
+                  [value]="appointmentData().appointment_time"
+                  (change)="onTimeChange($any($event.target).value)"
+                  name="appointment_time"
+                  required
+                >
+                  <option value="">เลือกเวลา</option>
+                  <optgroup label="ช่วงเช้า (08:00 - 11:30)">
+                    <option value="08:00">08:00</option>
+                    <option value="08:30">08:30</option>
+                    <option value="09:00">09:00</option>
+                    <option value="09:30">09:30</option>
+                    <option value="10:00">10:00</option>
+                    <option value="10:30">10:30</option>
+                    <option value="11:00">11:00</option>
+                    <option value="11:30">11:30</option>
+                  </optgroup>
+                  <optgroup label="ช่วงบ่าย (13:00 - 16:00)">
+                    <option value="13:00">13:00</option>
+                    <option value="13:30">13:30</option>
+                    <option value="14:00">14:00</option>
+                    <option value="14:30">14:30</option>
+                    <option value="15:00">15:00</option>
+                    <option value="15:30">15:30</option>
+                    <option value="16:00">16:00</option>
+                  </optgroup>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">
+                <svg xmlns="http://www.w3.org/2000/svg" class="label-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                  <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+                แผนก <span class="required">*</span>
+              </label>
+              <select 
+                class="form-select" 
+                [value]="appointmentData().department"
+                (change)="onDepartmentChange($any($event.target).value)"
+                name="department"
+                required
+              >
+                <option value="">เลือกแผนก</option>
+                @for (dept of departments(); track dept.id) {
+                  <option [value]="dept.name">{{ dept.name }}</option>
+                }
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">
+                <svg xmlns="http://www.w3.org/2000/svg" class="label-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+                แพทย์ผู้นัด
+              </label>
+              @if (isGeneralDepartment()) {
+                <input
+                  type="text"
+                  class="form-input"
+                  [value]="appointmentData().custom_doctor"
+                  (input)="onCustomDoctorChange($any($event.target).value)"
+                  name="custom_doctor"
+                  placeholder="กรอกชื่อแพทย์ผู้ตรวจ"
+                />
+                <p class="field-hint">แผนกโรคทั่วไปใช้แพทย์หมุนเวียน จึงไม่ต้องเลือกจากรายชื่อ</p>
+              } @else {
+                <select 
+                  class="form-select" 
+                  [value]="appointmentData().doctor_id"
+                  (change)="onDoctorChange($any($event.target).value)"
+                  name="doctor"
+                  [disabled]="!appointmentData().department || isLoadingDoctors()"
+                >
+                  <option value="">{{ isLoadingDoctors() ? 'กำลังโหลดรายชื่อแพทย์...' : 'เลือกแพทย์' }}</option>
+                  @for (doctor of filteredDoctors(); track doctor.id) {
+                    <option [value]="doctor.id">{{ doctor.name }}</option>
+                  }
+                </select>
+                @if (appointmentData().department && !isLoadingDoctors() && filteredDoctors().length === 0) {
+                  <p class="field-hint">ยังไม่มีแพทย์ที่เปิดรับนัดในแผนกนี้</p>
+                }
+                @if (selectedDoctor(); as doctor) {
+                  <div class="doctor-capacity" [class.full]="remainingDoctorCapacity() === 0">
+                    <div>
+                      <span class="capacity-label">จำนวนคิวในวันที่เลือก</span>
+                      <strong>{{ doctorAppointmentCount() }} / {{ doctor.max_patients_per_day }}</strong>
+                    </div>
+                    <span>รับผู้ป่วยได้อีก {{ remainingDoctorCapacity() }} คน</span>
+                  </div>
+                }
+              }
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">ห้องตรวจ</label>
+                <input 
+                  type="text" 
+                  class="form-input" 
+                  [value]="appointmentData().room"
+                  (input)="onRoomChange($any($event.target).value)"
+                  name="room"
+                  placeholder="เช่น ห้อง 201"
+                />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">วัตถุประสงค์การนัด</label>
+                <input 
+                  type="text" 
+                  class="form-input" 
+                  [value]="appointmentData().purpose"
+                  (input)="onPurposeChange($any($event.target).value)"
+                  name="purpose"
+                  placeholder="เช่น ตีดตามผลการรักษา"
+                />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">หมายเหตุ/คำแนะนำสำหรับผู้ป่วย</label>
+              <textarea 
+                class="form-textarea" 
+                [value]="appointmentData().notes"
+                (input)="onNotesChange($any($event.target).value)"
+                name="notes" 
+                rows="3" 
+                placeholder="เช่น งดน้ำงดอาหาร 8 ชั่วโมงก่อนตรวจ"
+              ></textarea>
+            </div>
+
+            <div class="form-actions">
+              <button type="button" class="btn btn-secondary" (click)="goBack()">ย้อนกลับ</button>
+              <button type="button" class="btn btn-primary" (click)="nextStep()">
+                <svg xmlns="http://www.w3.org/2000/svg" class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+                ส่งใบนัด
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    }
+
+    <!-- Step 3: Confirm -->
+    @if (currentStep() === 3) {
+      <div class="step-content">
+        <div class="confirm-section">
+          <div class="confirm-icon-wrapper">
+            <svg xmlns="http://www.w3.org/2000/svg" class="confirm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+              <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+          </div>
+          <h2 class="confirm-title">ยืนยันการออกใบนัด</h2>
+          <p class="confirm-subtitle">กรุณาตรวจสอบข้อมูลก่อนบันทึก</p>
+          
+          <div class="confirm-card">
+            <h3>ข้อมูลผู้ป่วย</h3>
+            @if (selectedPatient()) {
+              <div class="confirm-row">
+                <span class="confirm-label">ชื่อ-นามสกุล:</span>
+                <span class="confirm-value">{{ selectedPatient()!.full_name }}</span>
+              </div>
+              <div class="confirm-row">
+                <span class="confirm-label">HN:</span>
+                <span class="confirm-value">{{ selectedPatient()!.hn }}</span>
+              </div>
+              <div class="confirm-row">
+                <span class="confirm-label">เบอร์โทร:</span>
+                <span class="confirm-value">{{ selectedPatient()!.phone }}</span>
+              </div>
+            }
+          </div>
+
+          <div class="confirm-card">
+            <h3>รายละเอียดการนัด</h3>
+            <div class="confirm-row">
+              <span class="confirm-label">วันที่นัด:</span>
+              <span class="confirm-value">{{ appointmentData().appointment_date }}</span>
+            </div>
+            <div class="confirm-row">
+              <span class="confirm-label">เวลานัด:</span>
+              <span class="confirm-value">{{ appointmentData().appointment_time }} น.</span>
+            </div>
+            <div class="confirm-row">
+              <span class="confirm-label">แผนก:</span>
+              <span class="confirm-value">{{ appointmentData().department }}</span>
+            </div>
+            <div class="confirm-row">
+              <span class="confirm-label">แพทย์ผู้นัด:</span>
+              <span class="confirm-value">{{ getDoctorName() || '-' }}</span>
+            </div>
+            @if (appointmentData().room) {
+              <div class="confirm-row">
+                <span class="confirm-label">ห้องตรวจ:</span>
+                <span class="confirm-value">{{ appointmentData().room }}</span>
+              </div>
+            }
+            @if (appointmentData().purpose) {
+              <div class="confirm-row">
+                <span class="confirm-label">วัตถุประสงค์:</span>
+                <span class="confirm-value">{{ appointmentData().purpose }}</span>
+              </div>
+            }
+            @if (appointmentData().notes) {
+              <div class="confirm-row">
+                <span class="confirm-label">หมายเหตุ:</span>
+                <span class="confirm-value">{{ appointmentData().notes }}</span>
+              </div>
+            }
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" (click)="goBack()">ย้อนกลับ</button>
+            <button type="button" class="btn btn-primary" (click)="saveAppointment()">
+              <svg xmlns="http://www.w3.org/2000/svg" class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                <polyline points="7 3 7 8 15 8"></polyline>
+              </svg>
+              ยืนยันและบันทึก
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+  </main>
+</div>
+
+@if (historyPatient(); as patient) {
+  <div class="history-overlay" (click)="closePatientHistory()">
+    <section class="history-modal" role="dialog" aria-modal="true" aria-labelledby="history-title" (click)="$event.stopPropagation()">
+      <header class="history-header">
+        <h2 id="history-title">ประวัติผู้ป่วย</h2>
+        <div class="history-header-actions">
+          @if (false) {
+            <button class="btn-history-edit" type="button" (click)="startEditingHistory()">
+              <span aria-hidden="true">✎</span> แก้ไข
+            </button>
+          }
+          <button class="history-close-icon" type="button" aria-label="ปิด" (click)="closePatientHistory()">×</button>
+        </div>
+      </header>
+
+      @if (isHistoryLoading()) {
+        <div class="history-loading"><div class="spinner-large"></div><span>กำลังโหลดข้อมูลผู้ป่วย...</span></div>
+      } @else {
+        <div class="history-body">
+          <section class="patient-basics">
+            <h3>ข้อมูลพื้นฐาน</h3>
+            <div class="patient-basic-grid">
+              <div><span>ชื่อ-นามสกุล:</span><strong>{{ patient.full_name || '-' }}</strong></div>
+              <div><span>HN:</span><strong>{{ patient.hn || '-' }}</strong></div>
+              <div><span>เลขบัตรประชาชน:</span><strong>{{ patient.id_card || '-' }}</strong></div>
+              <div><span>วันเกิด:</span><strong>{{ patient.date_of_birth || '-' }}</strong></div>
+            </div>
+          </section>
+
+          <section class="history-field allergy-field">
+            <h3><span aria-hidden="true">⚠️</span> ข้อมูลการแพ้ยา</h3>
+            @if (isEditingHistory()) {
+              <textarea [ngModel]="historyForm().allergies" (ngModelChange)="historyForm.update(value => ({ ...value, allergies: $event }))" rows="4" placeholder="ระบุข้อมูลการแพ้ยา"></textarea>
+            } @else {
+              <div class="history-value">{{ patient.allergies || 'ไม่มีข้อมูล' }}</div>
+            }
+          </section>
+
+          <section class="history-field treatment-field">
+            <h3><span aria-hidden="true">📋</span> ประวัติการรักษา</h3>
+            @if (isEditingHistory()) {
+              <textarea [ngModel]="historyForm().notes" (ngModelChange)="historyForm.update(value => ({ ...value, notes: $event }))" rows="5" placeholder="ระบุประวัติการรักษา"></textarea>
+            } @else {
+              <div class="history-value">{{ patient.notes || 'ไม่มีข้อมูล' }}</div>
+            }
+          </section>
+        </div>
+        <footer class="history-footer">
+          @if (isEditingHistory()) {
+            <button class="btn-history-cancel" type="button" (click)="isEditingHistory.set(false)">ยกเลิก</button>
+            <button class="btn-history-save" type="button" (click)="savePatientHistory()">บันทึก</button>
+          } @else {
+            <button class="btn-history-close" type="button" (click)="closePatientHistory()">ปิด</button>
+          }
+        </footer>
+      }
+    </section>
+  </div>
+}

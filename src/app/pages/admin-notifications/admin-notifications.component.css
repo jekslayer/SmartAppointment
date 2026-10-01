@@ -1,0 +1,47 @@
+.admin-notifications-container { min-height: 100vh; background: #0f1419; color: #f8fafc; }
+.admin-header { background: #1a2332; border-bottom: 1px solid rgba(255,255,255,.06); padding: 1rem 2rem; }
+.header-content { max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.logo-wrapper, .header-right { display: flex; align-items: center; gap: .75rem; }
+.logo-icon { width: 2.5rem; height: 2.5rem; display: grid; place-items: center; border-radius: .5rem; background: linear-gradient(135deg,#f59e0b,#d97706); color: #fff; font-weight: 700; font-size: 1.25rem; }
+.header-title { margin: 0; color: #fff; font-size: 1.125rem; line-height: 1.3; }
+.header-subtitle, .user-label { margin: 0; color: #94a3b8; font-size: .75rem; }
+.user-label { font-size: .875rem; }
+.btn-logout { border: 0; border-radius: .375rem; padding: .5rem 1rem; background: #fff; color: #0f172a; cursor: pointer; font-size: .875rem; }
+.admin-main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 2rem 2.5rem; }
+.tabs { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1.5rem; padding: 1rem; border: 1px solid rgba(217,174,82,.15); border-radius: 1rem; background: rgba(26,35,50,.6); }
+.tab { padding: .75rem 1.5rem; border: 0; border-radius: .75rem; background: transparent; color: rgba(255,255,255,.6); cursor: pointer; font: inherit; font-weight: 600; }
+.tab:hover { background: rgba(59,130,246,.1); color: #fff; }
+.tab.active { background: #3b82f6; color: #fff; box-shadow: 0 4px 12px rgba(59,130,246,.3); }
+.settings-form { display: grid; gap: 1.25rem; }
+.message-card { padding: 1.5rem; border: 1px solid #34445b; border-radius: .75rem; background: #1d293b; }
+.message-card h2 { margin: 0; color: #fff; font-size: 1.125rem; }
+.card-description { margin: 1rem 0 .65rem; color: #b4c0d0; font-size: .875rem; }
+.message-textarea { display: block; width: 100%; min-height: 13rem; resize: vertical; padding: .8rem .9rem; border: 1px solid #52637b; border-radius: .35rem; background: #34445b; color: #fff; font: 600 .875rem/1.55 'Segoe UI', Tahoma, sans-serif; white-space: pre-wrap; }
+.reminder-textarea { min-height: 15rem; }
+.message-textarea:focus, .days-input:focus { outline: 2px solid #60a5fa; outline-offset: 1px; border-color: #60a5fa; }
+.variable-hint, .setting-hint { margin: .8rem 0 0; color: #718096; font-size: .75rem; }
+.days-setting { display: flex; align-items: center; gap: .65rem; margin-top: 1rem; color: #d5deea; font-size: .875rem; font-weight: 600; }
+.days-input { width: 8rem; padding: .6rem .75rem; border: 1px solid #52637b; border-radius: .375rem; background: #34445b; color: #fff; font: inherit; }
+.form-footer { display: flex; align-items: center; gap: 1rem; margin-top: 1.25rem; }
+.save-button { padding: .7rem 1rem; border: 0; border-radius: .4rem; background: #16a34a; color: #fff; cursor: pointer; font: 700 .875rem inherit; }
+.save-button:hover:not(:disabled) { background: #15803d; }
+.save-button:disabled { cursor: wait; opacity: .65; }
+.save-message { color: #86efac; font-size: .875rem; }
+.save-message.error { color: #fca5a5; }
+@media (max-width: 640px) { .admin-header, .admin-main { padding-left: 1rem; padding-right: 1rem; } .header-content { align-items: flex-start; flex-direction: column; } .message-card { padding: 1rem; } .tab { padding: .65rem .9rem; } .form-footer { align-items: flex-start; flex-direction: column; } }
+/* Overview, system users, capacity, notifications */
+.tabs .tab:nth-child(1) { order: 1; }
+.tabs .tab:nth-child(4) { order: 2; }
+.tabs .tab:nth-child(2), .tabs .tab:nth-child(3) { order: 3; }
+
+/* Match the scale and spacing used by the other admin setting screens. */
+.tab { padding: .875rem 2rem; font-size: 1.125rem; }
+.settings-form { gap: 1.5rem; }
+.message-card { padding: 2rem; border-color: rgba(148,163,184,.14); border-radius: 18px; box-shadow: 0 16px 40px rgba(0,0,0,.16); }
+.message-card h2 { font-size: 1.35rem; line-height: 1.35; }
+.card-description { margin-top: .6rem; font-size: .9rem; line-height: 1.65; }
+.message-textarea { min-height: 15rem; padding: .875rem; font-size: .9rem; }
+.reminder-textarea { min-height: 17rem; }
+.days-setting, .save-message { font-size: .875rem; }
+.save-button { padding: .75rem 1.5rem; font-size: .9375rem; }
+@media (max-width: 640px) { .tab { padding: .7rem 1rem; font-size: .9rem; } .message-card { padding: 1.25rem; } }

@@ -1,0 +1,15 @@
+<main class="checkin-page">
+  <section class="checkin-card">
+    <p class="eyebrow">SMART APPOINTMENT</p>
+    <h1>เช็กอินนัดหมาย</h1>
+    @if (loading()) {
+      <p class="state">กำลังยืนยันบัญชี LINE และเช็กอิน...</p>
+    } @else if (success()) {
+      <div class="state success" role="status">{{ alreadyCheckedIn() ? 'เช็กอินรายการนี้แล้ว' : 'เช็กอินสำเร็จแล้ว' }}</div>
+      <p>กรุณารอเรียกคิว</p>
+      <button type="button" (click)="close()">ปิด</button>
+    } @else {
+      <p class="state error" role="alert">{{ error() }}</p>
+    }
+  </section>
+</main>
