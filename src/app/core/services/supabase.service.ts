@@ -24,6 +24,11 @@ export class SupabaseService {
     const result = await this.createAppointmentAndNotify(appointment);
     return result.appointment;
   }
+  async getRescheduleLimitedIds(ids: string[]): Promise<string[]> {
+    if (!ids.length) return [];
+    const result = await firstValueFrom(this.api.post<{ limited_ids: string[] }>('data/appointments/reschedule-limits', { ids }));
+    return result.limited_ids || [];
+  }
   async createAppointmentAndNotify(appointment: any) {
     return firstValueFrom(this.api.post<any>('data/appointments/create-and-notify', appointment));
   }

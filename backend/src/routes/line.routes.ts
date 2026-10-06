@@ -3,6 +3,7 @@ import { NextFunction, Request, Response, Router } from 'express';
 import { getClient } from '../db/supabase';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { createError } from '../middleware/error.middleware';
+import { hasReachedRescheduleLimit } from '../services/reschedule-limit';
 
 const LINE_API = 'https://api.line.me/v2/bot/message';
 const LINE_LOGIN_API = 'https://api.line.me/oauth2/v2.1/verify';
@@ -355,32 +356,13 @@ async function hasAwaitingReplacementAppointment(patientId: string) {
   return Boolean(data?.length);
 }
 
-async function hasReachedRescheduleLimit(patientId: string, appointmentId: string) {
-  const client = getClient();
-  let childId = appointmentId;
-  // Count the previous appointments in this reschedule chain.
-  // Three prior reschedules means the next request must be handled by staff.
-  for (let count = 0; count < 3; count += 1) {
-    const { data, error } = await client.from('appointments').select('id')
-      .eq('patient_id', patientId)
-      .eq('rescheduled_to_appointment_id', childId)
-      .eq('status', 'rescheduled')
-      .limit(1);
-    if (error) throw error;
-    const parent = data?.[0];
-    if (!parent) return false;
-    childId = parent.id;
-  }
-  return true;
+// A reschedule can be requested at any time before the appointment starts.
+function canRequestReschedule(appointmentDate: string, appointmentTime: string) {
+  const now = bangkokDateTimeNow();
+  return appointmentDate > now.date || (appointmentDate === now.date && appointmentTime > now.time);
 }
 
-const rescheduleLimitMessage = 'ท่านขอเลื่อนนัดครบ 3 ครั้งแล้ว กรุณาติดต่อโรงพยาบาลหรือแผนกที่นัดหมาย';
-
-function canRequestReschedule(appointmentDate: string) {
-  const blockedFrom = new Date(`${todayInBangkok()}T00:00:00.000Z`);
-  blockedFrom.setUTCDate(blockedFrom.getUTCDate() + 3);
-  return appointmentDate >= blockedFrom.toISOString().slice(0, 10);
-}
+const rescheduleLimitMessage ='ท่านขอเลื่อนนัดครบ 3 ครั้งแล้ว กรุณาติดต่อโรงพยาบาลหรือแผนกที่นัดหมาย';
 
 async function applyPatientRichMenuPostback(event: LineEvent): Promise<string | null> {
   const lineUserId = event.source?.userId;
@@ -408,7 +390,7 @@ async function applyPatientRichMenuPostback(event: LineEvent): Promise<string | 
   }
   if (!appointment) return (await hasAwaitingReplacementAppointment(patientId)) ? 'ได้รับคำขอเลื่อนนัดแล้ว เจ้าหน้าที่กำลังออกใบนัดใหม่' : 'ไม่พบใบนัดที่สามารถขอเลื่อนได้';
   if (await hasReachedRescheduleLimit(patientId, appointment.id)) return rescheduleLimitMessage;
-  if (!canRequestReschedule(appointment.appointment_date)) return 'ขอเลื่อนนัดได้ก่อนวันนัดอย่างน้อย 3 วัน กรุณาติดต่อแผนก';
+  if (!canRequestReschedule(appointment.appointment_date, appointment.appointment_time)) return 'ใบนัดนี้เลยเวลานัดแล้ว ไม่สามารถขอเลื่อนได้ กรุณาติดต่อโรงพยาบาลหรือแผนกที่นัดหมาย';
   const { data: updated, error } = await getClient().from('appointments').update({ status: 'rescheduled', updated_at: new Date().toISOString() })
     .eq('id', appointment.id).in('status', ['pending', 'confirmed']).select('id').maybeSingle();
   if (error) throw error;

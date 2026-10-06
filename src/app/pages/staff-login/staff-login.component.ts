@@ -46,7 +46,9 @@ export class StaffLoginComponent implements OnInit {
     }
   }
   async handleLogin(event: Event) {
-    event.preventDefault(); this.error.set(''); this.isLoading.set(true);
+    event.preventDefault(); this.error.set('');
+    if (!this.employeeId().trim() || !this.password()) { this.error.set('กรุณากรอกรหัสพนักงานและรหัสผ่าน'); return; }
+    this.isLoading.set(true);
     try {
       const response = await firstValueFrom(this.authService.staffLogin(this.employeeId(), this.password()));
       if (response.must_change_password) { this.currentStaff.set(response.user); this.mustChangePassword.set(true); return; }

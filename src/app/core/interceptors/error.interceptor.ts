@@ -27,7 +27,13 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
         errorMessage = `Error: ${error.error.message}`;
       } else {
         // Server-side error
-        if (error.status === 401) {
+        const loginRole = req.url.match(/\/auth\/(staff|admin)\/login(?:\?|$)/)?.[1];
+        if (loginRole && error.status === 401) {
+          // Failed login: no session exists, so don't log out/redirect.
+          // Show the backend's specific message (unknown user / wrong password).
+          errorMessage = backendMessage
+            || (loginRole === 'admin' ? 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' : 'รหัสพนักงานหรือรหัสผ่านไม่ถูกต้อง');
+        } else if (error.status === 401) {
           // Unauthorized - clear the in-memory and persisted session.
           authService.logout(authService.isAdmin() ? '/admin-login' : '/staff-login');
           errorMessage = 'กรุณาเข้าสู่ระบบใหม่';

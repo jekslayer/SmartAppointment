@@ -17,7 +17,9 @@ export class AdminLoginComponent implements OnInit {
     if (this.authService.isAdmin()) this.router.navigate(['/admin-dashboard']);
   }
   async handleLogin(event: Event) {
-    event.preventDefault(); this.error.set(''); this.isLoading.set(true);
+    event.preventDefault(); this.error.set('');
+    if (!this.username().trim() || !this.password()) { this.error.set('กรุณากรอกชื่อผู้ใช้และรหัสผ่าน'); return; }
+    this.isLoading.set(true);
     try {
       await firstValueFrom(this.authService.adminLogin(this.username(), this.password()));
       await this.router.navigate(['/admin-dashboard']);

@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth.middleware';
 import { createError } from '../middleware/error.middleware';
 import { sendAppointmentNotification } from './line.routes';
 import { sendAppointmentReminderIfDue } from '../services/appointment-reminders.service';
+import { hasReachedRescheduleLimit } from '../services/reschedule-limit';
 
 export const dataRouter = Router();
 
@@ -47,6 +48,9 @@ dataRouter.post('/appointments/create-and-notify', authenticate, async (req: Req
       }
       if (sourceAppointment.appointment_date === appointment_date) {
         return next(createError(409, 'Rescheduled appointment must be on a different date'));
+      }
+      if (await hasReachedRescheduleLimit(patient_id, sourceAppointment.id)) {
+        return next(createError(409, 'Reschedule limit reached'));
       }
     }
     if ((doctorId === null || doctorId === undefined || doctorId === '') && department.trim() !== 'โรคทั่วไป') {
@@ -133,6 +137,28 @@ dataRouter.post('/appointments/create-and-notify', authenticate, async (req: Req
       reminderNotification = { due: false, attempted: false, sent: false, reason: 'reminder_check_failed' };
     }
     res.status(201).json({ appointment, notification, reminderNotification });
+  } catch (error) { next(error); }
+});
+
+// Which of the given appointments are awaiting a replacement but already sit
+// behind the maximum number of reschedules (staff must not issue another one).
+dataRouter.post('/appointments/reschedule-limits', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as Request & { user?: { role: string } }).user;
+    if (!user || !['staff', 'admin'].includes(user.role)) return next(createError(403, 'Access denied'));
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length > 100 || !ids.every((id: unknown) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))) {
+      return next(createError(400, 'Invalid appointment ids'));
+    }
+    if (!ids.length) return res.json({ limited_ids: [] });
+    const { data, error } = await getClient().from('appointments').select('id, patient_id')
+      .in('id', ids).eq('status', 'rescheduled').is('rescheduled_to_appointment_id', null);
+    if (error) throw error;
+    const limited: string[] = [];
+    for (const row of data || []) {
+      if (await hasReachedRescheduleLimit(row.patient_id, row.id)) limited.push(row.id);
+    }
+    res.json({ limited_ids: limited });
   } catch (error) { next(error); }
 });
 

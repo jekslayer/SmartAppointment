@@ -59,6 +59,7 @@ export class StaffDashboardComponent implements OnInit, OnDestroy {
   searchQuery = signal('');
   showCheckInQr = signal(false);
   checkInQr = signal('');
+  rescheduleLimitedIds = signal<Set<string>>(new Set());
 
   // Stats
   stats = signal<AppointmentStats>({
@@ -196,10 +197,25 @@ export class StaffDashboardComponent implements OnInit, OnDestroy {
 
       this.appointments.set(transformed);
       this.setStats(transformed);
+      await this.loadRescheduleLimited(transformed);
     } catch (error) {
       console.error('Error loading appointments:', error);
       this.appointments.set([]);
       this.setStats([]);
+    }
+  }
+
+  /** Flags rows awaiting a replacement whose reschedule chain already hit the limit. */
+  private async loadRescheduleLimited(appointments: Array<{ id: string; status: string; rescheduled_to_appointment_id?: string | null }>) {
+    const waitingIds = appointments
+      .filter(appointment => appointment.status === 'rescheduled' && !appointment.rescheduled_to_appointment_id)
+      .map(appointment => appointment.id);
+    try {
+      this.rescheduleLimitedIds.set(new Set(await this.supabaseService.getRescheduleLimitedIds(waitingIds)));
+    } catch (error) {
+      // Non-critical: without the flag the row keeps its normal rescheduled behavior.
+      console.error('Unable to load reschedule limits:', error);
+      this.rescheduleLimitedIds.set(new Set());
     }
   }
 

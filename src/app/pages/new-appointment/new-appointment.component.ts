@@ -442,6 +442,10 @@ export class NewAppointmentComponent implements OnInit {
         await this.dialog.warning('ไม่สามารถเลื่อนนัดเป็นวันเดิมได้ กรุณาเลือกวันที่นัดใหม่');
         return;
       }
+      if (/reschedule limit reached/i.test(errorMessage)) {
+        await this.dialog.warning('ผู้ป่วยรายนี้ขอเลื่อนนัดครบกำหนดแล้ว ไม่สามารถออกใบนัดใหม่ในระบบได้ กรุณาติดต่อผู้ป่วยโดยตรง', 'เลื่อนนัดเกินกำหนด');
+        return;
+      }
       if (/patient already has an active appointment/i.test(errorMessage)) {
         await this.dialog.warning(
           'ผู้ป่วยรายนี้มีใบนัดที่ยังรอเข้ารับบริการอยู่ กรุณาให้มาตามนัดหรือเลื่อนใบนัดเดิมให้เรียบร้อยก่อนออกใบนัดใหม่',
