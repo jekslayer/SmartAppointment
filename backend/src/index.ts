@@ -7,7 +7,7 @@ import { usersRouter } from './routes/users.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { checkInWithLiff, lineRouter, lineWebhook, verifyLiffPatientLink } from './routes/line.routes';
 import { runAppointmentNoShows, runAppointmentReminders } from './services/appointment-reminders.service';
-import { rateLimit, securityHeaders } from './middleware/security.middleware';
+import { loginFailureLimit, rateLimit, securityHeaders } from './middleware/security.middleware';
 
 dotenv.config();
 
@@ -25,7 +25,9 @@ export function createApp() {
   }));
   app.disable('x-powered-by');
   app.use(securityHeaders);
-  app.use(rateLimit(60_000, 300));
+  // Behind Vercel's proxy, req.ip would otherwise be the proxy for every user.
+  if (process.env.VERCEL) app.set('trust proxy', 1);
+  app.use(rateLimit(60_000, 1_000));
   // Vercel Services can forward a request after removing its route prefix.
   // Keep local `/api/...` routes unchanged while accepting that deployed form.
   app.use((req, _res, next) => {
@@ -36,7 +38,8 @@ export function createApp() {
   app.use(express.json({ limit: '10mb' }));
   app.post('/api/line/link/verify', rateLimit(15 * 60_000, 10, 'line-link'), verifyLiffPatientLink);
   app.post('/api/line/check-in', rateLimit(15 * 60_000, 10, 'line-check-in'), checkInWithLiff);
-  app.use('/api/auth', rateLimit(15 * 60_000, 10, 'login'));
+  const loginLimit = loginFailureLimit(15 * 60_000, 10, 50);
+  app.post(['/api/auth/staff/login', '/api/auth/admin/login'], loginLimit);
 
   app.use('/api/auth', authRouter);
   app.use('/api/data', dataRouter);

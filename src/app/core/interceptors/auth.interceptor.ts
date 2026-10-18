@@ -1,8 +1,8 @@
 import { HttpInterceptorFn } from '@angular/common/http';
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
-  // Get token from localStorage
-  const token = localStorage.getItem('auth_token');
+  // Get token from sessionStorage
+  const token = sessionStorage.getItem('auth_token');
   
   // Skip adding token only for public login endpoints (no token available yet)
   const PUBLIC_ENDPOINTS = ['/auth/staff/login', '/auth/admin/login'];

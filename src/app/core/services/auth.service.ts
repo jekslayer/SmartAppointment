@@ -80,7 +80,7 @@ export class AuthService {
     const user = this.currentUserSignal();
     if (!user) return;
     const updatedUser = { ...user, must_change_password: false };
-    localStorage.setItem(this.USER_KEY, JSON.stringify(updatedUser));
+    sessionStorage.setItem(this.USER_KEY, JSON.stringify(updatedUser));
     this.currentUserSignal.set(updatedUser);
   }
 
@@ -88,7 +88,7 @@ export class AuthService {
     const user = this.currentUserSignal();
     if (!user || user.role !== 'staff') return;
     const updatedUser = { ...user, must_change_password: true };
-    localStorage.setItem(this.USER_KEY, JSON.stringify(updatedUser));
+    sessionStorage.setItem(this.USER_KEY, JSON.stringify(updatedUser));
     this.currentUserSignal.set(updatedUser);
     this.router.navigate(['/staff-login']);
   }
@@ -97,14 +97,14 @@ export class AuthService {
    * Get current token
    */
   getToken(): string | null {
-    return localStorage.getItem(this.TOKEN_KEY);
+    return sessionStorage.getItem(this.TOKEN_KEY);
   }
 
   /**
    * Check if token is expired
    */
   isTokenExpired(): boolean {
-    const expiresAt = localStorage.getItem(this.EXPIRES_KEY);
+    const expiresAt = sessionStorage.getItem(this.EXPIRES_KEY);
     if (!expiresAt) return true;
     
     const parsedExpiration = Number(expiresAt);
@@ -130,9 +130,9 @@ export class AuthService {
   private handleLoginSuccess(response: LoginResponse): void {
     const expiresAt = new Date().getTime() + (response.expires_in * 1000);
     
-    localStorage.setItem(this.TOKEN_KEY, response.access_token);
-    localStorage.setItem(this.USER_KEY, JSON.stringify(response.user));
-    localStorage.setItem(this.EXPIRES_KEY, expiresAt.toString());
+    sessionStorage.setItem(this.TOKEN_KEY, response.access_token);
+    sessionStorage.setItem(this.USER_KEY, JSON.stringify(response.user));
+    sessionStorage.setItem(this.EXPIRES_KEY, expiresAt.toString());
     
     this.currentUserSignal.set(response.user);
     this.isAuthenticatedSignal.set(true);
@@ -142,8 +142,8 @@ export class AuthService {
    * Load session from storage
    */
   private loadSessionFromStorage(): void {
-    const token = localStorage.getItem(this.TOKEN_KEY);
-    const userJson = localStorage.getItem(this.USER_KEY);
+    const token = sessionStorage.getItem(this.TOKEN_KEY);
+    const userJson = sessionStorage.getItem(this.USER_KEY);
     
     if (!token || !userJson || this.isTokenExpired()) {
       this.clearSession();
@@ -164,13 +164,16 @@ export class AuthService {
    * Clear session
    */
   private clearSession(): void {
-    localStorage.removeItem(this.TOKEN_KEY);
-    localStorage.removeItem(this.USER_KEY);
-    localStorage.removeItem(this.EXPIRES_KEY);
+    sessionStorage.removeItem(this.TOKEN_KEY);
+    sessionStorage.removeItem(this.USER_KEY);
+    sessionStorage.removeItem(this.EXPIRES_KEY);
     
     // Clear old session keys
-    localStorage.removeItem('staff_session');
-    localStorage.removeItem('admin_session');
+    sessionStorage.removeItem('staff_session');
+    sessionStorage.removeItem('admin_session');
+
+    // Sessions used to live in localStorage (shared by every tab); drop any leftovers.
+    for (const key of [this.TOKEN_KEY, this.USER_KEY, this.EXPIRES_KEY]) localStorage.removeItem(key);
     
     this.currentUserSignal.set(null);
     this.isAuthenticatedSignal.set(false);
