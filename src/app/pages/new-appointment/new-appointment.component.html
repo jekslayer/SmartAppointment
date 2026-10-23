@@ -191,34 +191,28 @@
                   </svg>
                   เวลานัด <span class="required">*</span>
                 </label>
-                <select 
-                  class="form-select" 
-                  [value]="appointmentData().appointment_time"
-                  (change)="onTimeChange($any($event.target).value)"
-                  name="appointment_time"
-                  required
-                >
-                  <option value="">เลือกเวลา</option>
-                  <optgroup label="ช่วงเช้า (08:00 - 11:30)">
-                    <option value="08:00">08:00</option>
-                    <option value="08:30">08:30</option>
-                    <option value="09:00">09:00</option>
-                    <option value="09:30">09:30</option>
-                    <option value="10:00">10:00</option>
-                    <option value="10:30">10:30</option>
-                    <option value="11:00">11:00</option>
-                    <option value="11:30">11:30</option>
-                  </optgroup>
-                  <optgroup label="ช่วงบ่าย (13:00 - 16:00)">
-                    <option value="13:00">13:00</option>
-                    <option value="13:30">13:30</option>
-                    <option value="14:00">14:00</option>
-                    <option value="14:30">14:30</option>
-                    <option value="15:00">15:00</option>
-                    <option value="15:30">15:30</option>
-                    <option value="16:00">16:00</option>
-                  </optgroup>
-                </select>
+                <div class="time-range">
+                  <input
+                    type="time"
+                    class="form-input"
+                    [value]="appointmentData().appointment_time"
+                    (change)="onTimeChange($any($event.target).value)"
+                    name="appointment_time"
+                    aria-label="เวลาเริ่ม"
+                    required
+                  />
+                  <span class="time-range-separator">–</span>
+                  <input
+                    type="time"
+                    class="form-input"
+                    [value]="appointmentData().appointment_end_time"
+                    [min]="appointmentData().appointment_time"
+                    (change)="onEndTimeChange($any($event.target).value)"
+                    name="appointment_end_time"
+                    aria-label="เวลาเสร็จ"
+                    required
+                  />
+                </div>
               </div>
             </div>
 
@@ -382,7 +376,7 @@
             </div>
             <div class="confirm-row">
               <span class="confirm-label">เวลานัด:</span>
-              <span class="confirm-value">{{ appointmentData().appointment_time }} น.</span>
+              <span class="confirm-value">{{ appointmentData().appointment_time }} - {{ appointmentData().appointment_end_time }} น.</span>
             </div>
             <div class="confirm-row">
               <span class="confirm-label">แผนก:</span>

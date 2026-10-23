@@ -10,7 +10,7 @@ const APPOINTMENT_MESSAGE = `ใบนัดพบแพทย์
 
 ท่านมีนัดพบแพทย์ดังนี้:
 วันที่: {{appointment_date}}
-เวลา: {{appointment_time}}
+เวลา: {{appointment_time}} - {{appointment_end_time}}
 แผนก: {{department}}
 แพทย์: {{doctor_name}}
 
@@ -22,7 +22,7 @@ const REMINDER_MESSAGE = `แจ้งเตือนนัดพบแพทย
 
 เตือนความจำ: ท่านมีนัดพบแพทย์
 วันที่: {{appointment_date}}
-เวลา: {{appointment_time}}
+เวลา: {{appointment_time}} - {{appointment_end_time}}
 แผนก: {{department}}
 แพทย์: {{doctor_name}}
 

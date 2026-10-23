@@ -23,6 +23,18 @@ export class StaffDashboardComponent implements OnInit, OnDestroy {
   // User session
   currentUser = computed(() => this.authService.currentUser());
 
+  // Status tabs show how many appointments entered that status since staff last looked at it.
+  private readonly badgeStatuses = ['confirmed', 'completed', 'rescheduled', 'no_show'] as const;
+  private seenAt = signal<Record<string, number>>({});
+  newCounts = computed(() => {
+    const seen = this.seenAt();
+    const counts: Record<string, number> = { confirmed: 0, completed: 0, rescheduled: 0, no_show: 0 };
+    for (const apt of this.appointments()) {
+      if (apt.status in counts && Date.parse(apt.updated_at ?? "") > (seen[apt.status] ?? Infinity)) counts[apt.status]++;
+    }
+    return counts;
+  });
+
   // Date selection
   selectedDate = signal(new Date());
   dateInputValue = signal('');
@@ -47,7 +59,8 @@ export class StaffDashboardComponent implements OnInit, OnDestroy {
       filtered = filtered.filter(apt =>
         (apt.patient_hn ?? '').toLowerCase().includes(search) ||
         (apt.patient_name ?? '').toLowerCase().includes(search) ||
-        (apt.department ?? '').toLowerCase().includes(search)
+        (apt.department ?? '').toLowerCase().includes(search) ||
+        (apt.doctor ?? '').toLowerCase().includes(search)
       );
     }
 
@@ -80,6 +93,8 @@ export class StaffDashboardComponent implements OnInit, OnDestroy {
   ) { }
 
   ngOnInit() {
+    this.seenAt.set(this.readSeenAt());
+
     // Set initial date
     this.updateDateInput();
 
@@ -109,6 +124,41 @@ export class StaffDashboardComponent implements OnInit, OnDestroy {
 
   setFilter(status: string) {
     this.filterStatus.set(status);
+    this.markSeen(status);
+  }
+
+  private seenStorageKey() {
+    return `staff_dashboard_seen_${this.authService.currentUser()?.id ?? 'anonymous'}`;
+  }
+
+  private readSeenAt(): Record<string, number> {
+    try {
+      const stored = JSON.parse(localStorage.getItem(this.seenStorageKey()) || '{}');
+      return stored && typeof stored === 'object' ? stored : {};
+    } catch { return {}; }
+  }
+
+  private updateSeenAt(next: Record<string, number>) {
+    this.seenAt.set(next);
+    try { localStorage.setItem(this.seenStorageKey(), JSON.stringify(next)); } catch { /* storage unavailable: badges just reset on reload */ }
+  }
+
+  /** First visit: everything already there counts as seen. Later: only newer arrivals are "new". */
+  private initSeenBaseline() {
+    const seen = this.seenAt();
+    const missing = this.badgeStatuses.filter(status => seen[status] === undefined);
+    if (!missing.length) return;
+    const now = Date.now();
+    this.updateSeenAt({ ...seen, ...Object.fromEntries(missing.map(status => [status, now])) });
+  }
+
+  /** Marks everything currently loaded for this status as seen, clearing its badge. */
+  private markSeen(status: string) {
+    if (!(this.badgeStatuses as readonly string[]).includes(status)) return;
+    const seen = this.seenAt();
+    const latest = Math.max(seen[status] ?? 0, ...this.appointments()
+      .filter(apt => apt.status === status).map(apt => Date.parse(apt.updated_at ?? "") || 0));
+    if (latest > (seen[status] ?? 0)) this.updateSeenAt({ ...seen, [status]: latest });
   }
 
   onSearch(event: Event) {
@@ -143,6 +193,14 @@ export class StaffDashboardComponent implements OnInit, OnDestroy {
     if (confirm('คุณต้องการออกจากระบบหรือไม่?')) {
       this.authService.logout();
     }
+  }
+
+  /** "09:00:00" -> "09:00 - 09:30" when an end time exists, otherwise the start time as before. */
+  timeRange(appointment: Appointment): string {
+    const start = appointment.appointment_time ?? '';
+    return appointment.appointment_end_time
+      ? `${start.slice(0, 5)} - ${appointment.appointment_end_time.slice(0, 5)}`
+      : start;
   }
 
   getStatusLabel(status: string): string {
@@ -196,6 +254,9 @@ export class StaffDashboardComponent implements OnInit, OnDestroy {
       }));
 
       this.appointments.set(transformed);
+      this.initSeenBaseline();
+      // Someone watching a status tab has already seen what arrives in it.
+      this.markSeen(this.filterStatus());
       this.setStats(transformed);
       await this.loadRescheduleLimited(transformed);
     } catch (error) {

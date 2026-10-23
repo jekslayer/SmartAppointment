@@ -740,3 +740,7 @@
 .btn-history-cancel { border: 1px solid #cbd5e1; background: #fff; }.btn-history-save { border: 1px solid #1d4ed8; background: #2563eb; color: #fff; }
 .history-loading { min-height: 15rem; display: grid; place-content: center; justify-items: center; gap: 1rem; color: #64748b; }
 @media (max-width: 560px) { .history-header, .history-body, .history-footer { padding-left: 1rem; padding-right: 1rem; } .patient-basic-grid { grid-template-columns: 1fr; gap: .8rem; } }
+
+.time-range { display: flex; align-items: center; gap: .5rem; }
+.time-range .form-input { flex: 1 1 0; min-width: 0; }
+.time-range-separator { color: #64748b; }

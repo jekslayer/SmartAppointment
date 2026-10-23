@@ -22,13 +22,67 @@ function todayInBangkok() {
   return `${value('year')}-${value('month')}-${value('day')}`;
 }
 
+const DEFAULT_APPOINTMENT_MINUTES = 30;
+
+function toMinutes(time: string) {
+  const [hours, minutes] = time.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
+function formatClock(minutes: number) {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+/**
+ * Returns the "HH:MM-HH:MM" slot of an existing appointment that overlaps the requested
+ * one for the same doctor and date, or null. Appointments without an end time count as
+ * DEFAULT_APPOINTMENT_MINUTES long. A doctor is matched by id; appointments saved without
+ * a doctor id (legacy rows, free-typed general-clinic doctors) are matched by name + department.
+ */
+async function findOverlappingAppointment(
+  client: ReturnType<typeof getClient>,
+  request: { doctorId: string | null; doctor: string; department: string; date: string; start: string; end: string | null }
+) {
+  const base = () => client.from('appointments')
+    .select('appointment_time, appointment_end_time')
+    .eq('appointment_date', request.date)
+    .neq('status', 'cancelled')
+    .neq('status', 'rescheduled')
+    .limit(500);
+  const [linked, unlinked] = await Promise.all([
+    request.doctorId ? base().eq('doctor_id', request.doctorId) : Promise.resolve({ data: [], error: null }),
+    base().is('doctor_id', null).eq('doctor', request.doctor).eq('department', request.department)
+  ]);
+  if (linked.error) throw linked.error;
+  if (unlinked.error) throw unlinked.error;
+  return findOverlappingSlot([...(linked.data || []), ...(unlinked.data || [])], request.start, request.end);
+}
+
+/** Back-to-back appointments (one ends exactly when the next starts) do not overlap. */
+function findOverlappingSlot(
+  rows: Array<{ appointment_time: string; appointment_end_time?: string | null; department?: string }>,
+  requestStart: string,
+  requestEnd: string | null
+) {
+  const newStart = toMinutes(requestStart);
+  const newEnd = requestEnd ? toMinutes(requestEnd) : newStart + DEFAULT_APPOINTMENT_MINUTES;
+  for (const row of rows) {
+    const start = toMinutes(row.appointment_time);
+    const end = row.appointment_end_time ? toMinutes(row.appointment_end_time) : start + DEFAULT_APPOINTMENT_MINUTES;
+    if (newStart < end && newEnd > start) return `${formatClock(start)}-${formatClock(end)}${row.department ? ` ${row.department}` : ''}`;
+  }
+  return null;
+}
+
 dataRouter.post('/appointments/create-and-notify', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const user = (req as Request & { user?: { id: string; role: string } }).user;
     if (!user || !['staff', 'admin'].includes(user.role)) return next(createError(403, 'Access denied'));
-    const { patient_id, appointment_date, appointment_time, department, doctor_id: doctorId, doctor, room, purpose, notes, reschedule_from_appointment_id: rescheduleFromAppointmentId } = req.body;
+    const { patient_id, appointment_date, appointment_time, appointment_end_time, department, doctor_id: doctorId, doctor, room, purpose, notes, reschedule_from_appointment_id: rescheduleFromAppointmentId } = req.body;
     if (![patient_id, appointment_date, appointment_time, department, doctor, room, purpose].every(value => typeof value === 'string' && value.trim())) return next(createError(400, 'Complete appointment details are required'));
     if (!isValidAppointmentDate(appointment_date) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(appointment_time)) return next(createError(400, 'Invalid appointment date or time'));
+    if (appointment_end_time !== undefined && appointment_end_time !== null && (typeof appointment_end_time !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(appointment_end_time) || appointment_end_time <= appointment_time)) return next(createError(400, 'Appointment end time must be a valid time after the start time'));
+    const endTime: string | null = typeof appointment_end_time === 'string' ? appointment_end_time : null;
     if (appointment_date < todayInBangkok()) return next(createError(400, 'Appointments cannot be scheduled in the past'));
     if (rescheduleFromAppointmentId !== undefined && (typeof rescheduleFromAppointmentId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rescheduleFromAppointmentId))) {
       return next(createError(400, 'Invalid rescheduled appointment reference'));
@@ -49,6 +103,9 @@ dataRouter.post('/appointments/create-and-notify', authenticate, async (req: Req
       if (sourceAppointment.appointment_date === appointment_date) {
         return next(createError(409, 'Rescheduled appointment must be on a different date'));
       }
+      if (appointment_date < sourceAppointment.appointment_date) {
+        return next(createError(409, 'Rescheduled appointment must be after the original appointment date'));
+      }
       if (await hasReachedRescheduleLimit(patient_id, sourceAppointment.id)) {
         return next(createError(409, 'Reschedule limit reached'));
       }
@@ -56,19 +113,27 @@ dataRouter.post('/appointments/create-and-notify', authenticate, async (req: Req
     if ((doctorId === null || doctorId === undefined || doctorId === '') && department.trim() !== 'โรคทั่วไป') {
       return next(createError(400, 'A valid doctor must be selected for this department'));
     }
-    // A patient may have only one appointment awaiting attendance at a time.
-    // Rescheduling remains possible because its source appointment is atomically
-    // moved to `rescheduled` by the database RPC before the replacement is inserted.
+    // A patient may hold several appointments awaiting attendance, but at most one per
+    // department (also enforced by the database) and never two that overlap in time.
+    // Rescheduling stays possible because its source appointment is atomically moved to
+    // `rescheduled` by the database RPC before the replacement is inserted.
     let activeAppointmentQuery = client
       .from('appointments')
-      .select('id')
+      .select('appointment_date, appointment_time, appointment_end_time, department')
       .eq('patient_id', patient_id)
       .in('status', ['pending', 'confirmed']);
     if (rescheduleFromAppointmentId) activeAppointmentQuery = activeAppointmentQuery.neq('id', rescheduleFromAppointmentId);
-    const { data: activeAppointments, error: activeAppointmentError } = await activeAppointmentQuery.limit(1);
+    const { data: activeAppointments, error: activeAppointmentError } = await activeAppointmentQuery.limit(200);
     if (activeAppointmentError) throw activeAppointmentError;
-    if (activeAppointments?.length) {
-      return next(createError(409, 'Patient already has an active appointment'));
+    const sameDepartment = activeAppointments?.find(item => item.department === department.trim());
+    if (sameDepartment) {
+      return next(createError(409, `Patient already has an active appointment in this department (${sameDepartment.appointment_date})`));
+    }
+    const patientOverlap = findOverlappingSlot(
+      (activeAppointments || []).filter(item => item.appointment_date === appointment_date), appointment_time, endTime
+    );
+    if (patientOverlap) {
+      return next(createError(409, `Patient already has an overlapping appointment (${patientOverlap})`));
     }
     if (doctorId !== null && doctorId !== undefined) {
       if (typeof doctorId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(doctorId)) {
@@ -104,13 +169,21 @@ dataRouter.post('/appointments/create-and-notify', authenticate, async (req: Req
         return next(createError(409, 'Doctor daily capacity reached'));
       }
     }
-    const appointmentPayload = { patient_id, appointment_date, appointment_time, department: department.trim(), doctor_id: doctorId || null, doctor: doctor.trim(), room: room.trim(), purpose: purpose.trim(), notes: typeof notes === 'string' ? notes.trim() || null : null, status: 'pending', created_by: user.id };
+    // One doctor cannot be booked for overlapping times on the same day. Back-to-back
+    // appointments (one ends exactly when the next starts) are allowed.
+    const overlap = await findOverlappingAppointment(client, {
+      doctorId: typeof doctorId === 'string' && doctorId ? doctorId : null,
+      doctor: doctor.trim(), department: department.trim(), date: appointment_date, start: appointment_time, end: endTime
+    });
+    if (overlap) return next(createError(409, `Appointment time overlaps an existing appointment (${overlap})`));
+    const appointmentPayload = { patient_id, appointment_date, appointment_time, ...(endTime ? { appointment_end_time: endTime } : {}), department: department.trim(), doctor_id: doctorId || null, doctor: doctor.trim(), room: room.trim(), purpose: purpose.trim(), notes: typeof notes === 'string' ? notes.trim() || null : null, status: 'pending', created_by: user.id };
     const result = rescheduleFromAppointmentId
       ? await client.rpc('create_rescheduled_appointment', {
         p_source_appointment_id: rescheduleFromAppointmentId,
         p_patient_id: patient_id,
         p_appointment_date: appointment_date,
         p_appointment_time: appointment_time,
+        ...(endTime ? { p_appointment_end_time: endTime } : {}),
         p_department: appointmentPayload.department,
         p_doctor_id: appointmentPayload.doctor_id,
         p_doctor: appointmentPayload.doctor,
@@ -121,6 +194,10 @@ dataRouter.post('/appointments/create-and-notify', authenticate, async (req: Req
       }).single()
       : await client.from('appointments').insert(appointmentPayload).select().single();
     let { data: appointment, error: appointmentError } = result;
+    if (appointmentError?.code === '23505') {
+      // Lost a race with another booking for the same patient and department.
+      return next(createError(409, 'Patient already has an active appointment in this department'));
+    }
     if (appointmentError?.code === 'P0001') {
       const message = /rescheduled appointment must be on a different date/i.test(appointmentError.message || '')
         ? 'Rescheduled appointment must be on a different date'

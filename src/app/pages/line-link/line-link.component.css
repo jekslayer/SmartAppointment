@@ -8,3 +8,6 @@ input { width: 100%; border: 1px solid #cbd5e1; border-radius: .55rem; padding: 
 input:focus { border-color: #2563eb; outline: 3px solid rgb(37 99 235 / 15%); }
 button { width: 100%; margin-top: 1.5rem; border: 0; border-radius: .55rem; padding: .8rem; background: #2563eb; color: #fff; font: inherit; font-weight: 700; }
 button:disabled { opacity: .6; }.state { padding: 1rem; border-radius: .55rem; background: #dbeafe; }.error, .form-error { color: #b91c1c; background: #fee2e2; }.form-error { margin-top: 1rem; padding: .7rem; border-radius: .45rem; }.success { color: #166534; background: #dcfce7; }
+
+button.secondary { margin-top: .75rem; background: #e2e8f0; color: #1e293b; }
+.hint { margin-top: .75rem; color: #475569; font-size: .9rem; text-align: center; }

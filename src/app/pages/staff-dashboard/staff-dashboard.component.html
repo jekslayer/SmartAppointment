@@ -37,13 +37,13 @@
     </section>
 
     <section class="search-filter-section">
-      <div class="search-box"><svg xmlns="http://www.w3.org/2000/svg" class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg><input type="text" placeholder="ค้นหาชื่อผู้ป่วย, HN, แผนก..." class="search-input" (input)="onSearch($event)" /></div>
+      <div class="search-box"><svg xmlns="http://www.w3.org/2000/svg" class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg><input type="text" placeholder="ค้นหาชื่อผู้ป่วย, HN, แผนก, แพทย์..." class="search-input" (input)="onSearch($event)" /></div>
       <div class="filter-tabs">
         <button class="filter-tab" [class.active]="filterStatus() === 'all'" (click)="setFilter('all')">ทั้งหมด</button>
-        <button class="filter-tab" [class.active]="filterStatus() === 'confirmed'" (click)="setFilter('confirmed')">ยืนยันมา</button>
-        <button class="filter-tab" [class.active]="filterStatus() === 'completed'" (click)="setFilter('completed')">มาตามนัด</button>
-        <button class="filter-tab" [class.active]="filterStatus() === 'rescheduled'" (click)="setFilter('rescheduled')">เลื่อนนัด</button>
-        <button class="filter-tab no-show-tab" [class.active]="filterStatus() === 'no_show'" (click)="setFilter('no_show')">ไม่มาตามนัด</button>
+        <button class="filter-tab" [class.active]="filterStatus() === 'confirmed'" (click)="setFilter('confirmed')">ยืนยันมา@if (newCounts()['confirmed'] > 0) { <span class="tab-badge">{{ newCounts()['confirmed'] }}</span> }</button>
+        <button class="filter-tab" [class.active]="filterStatus() === 'completed'" (click)="setFilter('completed')">มาตามนัด@if (newCounts()['completed'] > 0) { <span class="tab-badge">{{ newCounts()['completed'] }}</span> }</button>
+        <button class="filter-tab" [class.active]="filterStatus() === 'rescheduled'" (click)="setFilter('rescheduled')">เลื่อนนัด@if (newCounts()['rescheduled'] > 0) { <span class="tab-badge">{{ newCounts()['rescheduled'] }}</span> }</button>
+        <button class="filter-tab no-show-tab" [class.active]="filterStatus() === 'no_show'" (click)="setFilter('no_show')">ไม่มาตามนัด@if (newCounts()['no_show'] > 0) { <span class="tab-badge">{{ newCounts()['no_show'] }}</span> }</button>
       </div>
       <button class="btn btn-secondary" (click)="openCheckInQr()">QR เช็กอิน</button>
       <button class="btn btn-icon-only" (click)="refreshData()" title="รีเฟรช" aria-label="รีเฟรช"><svg xmlns="http://www.w3.org/2000/svg" class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button>
@@ -53,7 +53,7 @@
       @if (filteredAppointments().length > 0) {
         <div class="appointments-table-wrapper"><table class="appointments-table"><thead><tr><th>HN</th><th>ชื่อผู้ป่วย</th><th>วันที่นัด</th><th>เวลา</th><th>แผนก</th><th>แพทย์</th><th>สถานะ</th></tr></thead><tbody>
           @for (apt of filteredAppointments(); track apt.id) {
-            <tr><td class="font-medium">{{ apt.patient_hn }}</td><td>{{ apt.patient_name }}</td><td>{{ apt.appointment_date }}</td><td>{{ apt.appointment_time }}</td><td>{{ apt.department }}</td><td>{{ apt.doctor }}</td><td>@if (apt.status === 'rescheduled' && !apt.rescheduled_to_appointment_id && rescheduleLimitedIds().has(apt.id)) { <span [class]="getStatusClass(apt.status)" title="ผู้ป่วยขอเลื่อนครบกำหนดแล้ว กรุณาติดต่อผู้ป่วยโดยตรง">เลื่อนนัดเกินกำหนด</span> } @else if (apt.status === 'rescheduled' && !apt.rescheduled_to_appointment_id) { <button type="button" [class]="getStatusClass(apt.status) + ' status-action'" (click)="startRescheduledAppointment(apt)" title="ออกใบนัดใหม่ให้ผู้ป่วยรายนี้">{{ getStatusLabel(apt.status) }}</button> } @else if (apt.status === 'rescheduled') { <span [class]="getStatusClass(apt.status)">เลื่อนนัดแล้ว</span> } @else { <span [class]="getStatusClass(apt.status)">{{ getStatusLabel(apt.status) }}</span> }</td></tr>
+            <tr><td class="font-medium">{{ apt.patient_hn }}</td><td>{{ apt.patient_name }}</td><td>{{ apt.appointment_date }}</td><td>{{ timeRange(apt) }}</td><td>{{ apt.department }}</td><td>{{ apt.doctor }}</td><td>@if (apt.status === 'rescheduled' && !apt.rescheduled_to_appointment_id && rescheduleLimitedIds().has(apt.id)) { <span [class]="getStatusClass(apt.status)" title="ผู้ป่วยขอเลื่อนครบกำหนดแล้ว กรุณาติดต่อผู้ป่วยโดยตรง">เลื่อนนัดเกินกำหนด</span> } @else if (apt.status === 'rescheduled' && !apt.rescheduled_to_appointment_id) { <button type="button" [class]="getStatusClass(apt.status) + ' status-action'" (click)="startRescheduledAppointment(apt)" title="ออกใบนัดใหม่ให้ผู้ป่วยรายนี้">{{ getStatusLabel(apt.status) }}</button> } @else if (apt.status === 'rescheduled') { <span [class]="getStatusClass(apt.status)">เลื่อนนัดแล้ว</span> } @else { <span [class]="getStatusClass(apt.status)">{{ getStatusLabel(apt.status) }}</span> }</td></tr>
           }
         </tbody></table></div>
       } @else {

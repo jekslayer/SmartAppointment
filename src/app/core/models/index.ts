@@ -68,12 +68,14 @@ export interface Appointment {
   doctor_id: string;
   appointment_date: string;
   appointment_time?: string;
+  appointment_end_time?: string | null;
   queue_number: number;
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'no_show' | 'rescheduled';
   rescheduled_to_appointment_id?: string | null;
   symptoms?: string;
   notes?: string;
   created_at: string;
+  updated_at?: string;
   // Nested objects
   patients?: Patient;
   departments?: Department;

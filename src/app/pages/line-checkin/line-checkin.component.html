@@ -6,7 +6,12 @@
       <p class="state">กำลังยืนยันบัญชี LINE และเช็กอิน...</p>
     } @else if (success()) {
       <div class="state success" role="status">{{ alreadyCheckedIn() ? 'เช็กอินรายการนี้แล้ว' : 'เช็กอินสำเร็จแล้ว' }}</div>
+      @if (checkedInSlot()) { <p>เช็กอิน{{ checkedInSlot() }}</p> }
       <p>กรุณารอเรียกคิว</p>
+      @if (remainingToday().length) {
+        <p>วันนี้ท่านยังมีนัดอีก สแกน QR อีกครั้งเมื่อถึงเวลาของแต่ละนัด</p>
+        @for (slot of remainingToday(); track slot) { <p>• {{ slot }}</p> }
+      }
       <button type="button" (click)="close()">ปิด</button>
     } @else {
       <p class="state error" role="alert">{{ error() }}</p>

@@ -9,9 +9,20 @@
       <p class="state">กำลังเชื่อมต่อ LINE...</p>
     } @else if (error() && !ready()) {
       <p class="state error" role="alert">{{ error() }}</p>
+      <button type="button" class="secondary" (click)="closePage()">ปิดหน้านี้</button>
+      @if (closeUnavailable()) { <p class="hint">ไม่สามารถปิดอัตโนมัติได้ กรุณาปิดหน้านี้ด้วยตัวเอง</p> }
     } @else if (success()) {
       @if (checkInMode()) { <div class="state success" role="status">{{ alreadyCheckedIn() ? 'เช็กอินรายการนี้แล้ว' : 'เช็กอินสำเร็จแล้ว กรุณารอเรียกคิว' }}</div> }
-      @if (!checkInMode()) { <div class="state success" role="status">เชื่อมบัญชี LINE สำเร็จแล้ว คุณสามารถปิดหน้านี้ได้</div> }
+      @if (checkInMode() && checkedInSlot()) { <p class="hint">เช็กอิน{{ checkedInSlot() }}</p> }
+      @if (checkInMode() && remainingToday().length) {
+        <p class="hint">วันนี้ท่านยังมีนัดอีก สแกน QR อีกครั้งเมื่อถึงเวลาของแต่ละนัด</p>
+        @for (slot of remainingToday(); track slot) { <p class="hint">• {{ slot }}</p> }
+      }
+      @if (!checkInMode()) { <div class="state success" role="status">เชื่อมบัญชี LINE สำเร็จแล้ว คุณสามารถปิดหน้านี้ได้</div>
+        @if (countdown() > 0) { <p class="hint">หน้านี้จะปิดอัตโนมัติใน {{ countdown() }} วินาที</p> }
+        <button type="button" (click)="closePage()">ปิดหน้านี้</button>
+        @if (closeUnavailable()) { <p class="hint">ไม่สามารถปิดอัตโนมัติได้ กรุณาปิดหน้านี้ด้วยตัวเอง</p> }
+      }
     } @else {
       <form (ngSubmit)="linkPatient()">
         <label for="id-card-last4">เลขบัตรประชาชน 4 ตัวท้าย</label>
@@ -24,6 +35,10 @@
         <button type="submit" [disabled]="submitting() || !idCardLast4.trim() || !dateOfBirth">
           {{ submitting() ? 'กำลังเชื่อมบัญชี...' : 'ยืนยันและเชื่อมบัญชี' }}
         </button>
+        @if (error()) {
+          <button type="button" class="secondary" (click)="closePage()">ปิดหน้านี้</button>
+          @if (closeUnavailable()) { <p class="hint">ไม่สามารถปิดอัตโนมัติได้ กรุณาปิดหน้านี้ด้วยตัวเอง</p> }
+        }
       </form>
     }
   </section>

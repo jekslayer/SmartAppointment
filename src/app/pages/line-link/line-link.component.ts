@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
@@ -10,6 +10,7 @@ interface LiffSdk {
   isInClient(): boolean;
   login(options?: { redirectUri?: string }): void;
   getIDToken(): string | null;
+  closeWindow(): void;
 }
 
 declare global {
@@ -22,7 +23,7 @@ declare global {
   templateUrl: './line-link.component.html',
   styleUrl: './line-link.component.css'
 })
-export class LineLinkComponent implements OnInit {
+export class LineLinkComponent implements OnInit, OnDestroy {
   idCardLast4 = '';
   dateOfBirth = '';
   readonly ready = signal(false);
@@ -31,9 +32,16 @@ export class LineLinkComponent implements OnInit {
   readonly success = signal(false);
   readonly checkInMode = signal(false);
   readonly alreadyCheckedIn = signal(false);
+  readonly checkedInSlot = signal('');
+  readonly remainingToday = signal<string[]>([]);
   readonly error = signal('');
+  readonly countdown = signal(0);
+  readonly closeUnavailable = signal(false);
+  private countdownTimer?: ReturnType<typeof setInterval>;
 
   constructor(private readonly api: ApiService) {}
+
+  ngOnDestroy() { clearInterval(this.countdownTimer); }
 
   async ngOnInit() {
     if (!environment.liffId) {
@@ -68,10 +76,18 @@ export class LineLinkComponent implements OnInit {
   private async checkIn() {
     const idToken = window.liff?.getIDToken();
     if (!idToken) throw new Error('ไม่พบข้อมูลยืนยันตัวตนจาก LINE');
-    const result = await firstValueFrom(this.api.post<{ alreadyCheckedIn?: boolean }>('line/check-in', { id_token: idToken }));
+    const result = await firstValueFrom(this.api.post<{ alreadyCheckedIn?: boolean; appointment?: { department: string; appointment_time: string; appointment_end_time?: string | null }; remaining?: Array<{ department: string; appointment_time: string; appointment_end_time?: string | null }> }>('line/check-in', { id_token: idToken }));
     this.alreadyCheckedIn.set(Boolean(result.alreadyCheckedIn));
+    this.checkedInSlot.set(result.appointment ? this.formatSlot(result.appointment) : '');
+    this.remainingToday.set((result.remaining || []).map(slot => this.formatSlot(slot)));
     this.success.set(true);
-    if (window.liff?.isInClient()) setTimeout(() => (window.liff as any).closeWindow(), 2500);
+    // Leave more time to read when other appointments remain today.
+    if (window.liff?.isInClient()) setTimeout(() => (window.liff as any).closeWindow(), this.remainingToday().length ? 8000 : 2500);
+  }
+
+  private formatSlot(slot: { department: string; appointment_time: string; appointment_end_time?: string | null }) {
+    const time = slot.appointment_end_time ? `${slot.appointment_time.slice(0, 5)} - ${slot.appointment_end_time.slice(0, 5)}` : slot.appointment_time.slice(0, 5);
+    return `แผนก${slot.department} เวลา ${time} น.`;
   }
 
   private getCheckInErrorMessage(error: unknown) {
@@ -102,6 +118,25 @@ export class LineLinkComponent implements OnInit {
     return 'เช็กอินไม่สำเร็จ กรุณาลองใหม่หรือติดต่อเจ้าหน้าที่';
   }
 
+  /** Closes the LIFF window inside the LINE app. Outside LINE it cannot be closed from script. */
+  closePage() {
+    clearInterval(this.countdownTimer);
+    this.countdown.set(0);
+    if (window.liff?.isInClient()) window.liff.closeWindow();
+    else window.close();
+    // If the page is still here a moment later, tell the patient to close it themselves.
+    setTimeout(() => this.closeUnavailable.set(true), 800);
+  }
+
+  private startAutoClose(seconds: number) {
+    this.countdown.set(seconds);
+    this.countdownTimer = setInterval(() => {
+      const remaining = this.countdown() - 1;
+      this.countdown.set(Math.max(remaining, 0));
+      if (remaining <= 0) this.closePage();
+    }, 1000);
+  }
+
   async linkPatient() {
     const idToken = window.liff?.getIDToken();
     if (!idToken) {
@@ -117,7 +152,7 @@ export class LineLinkComponent implements OnInit {
         id_token: idToken
       }));
       this.success.set(true);
-      if (window.liff?.isInClient()) setTimeout(() => window.close(), 1500);
+      if (window.liff?.isInClient()) this.startAutoClose(3);
     } catch (error) {
       this.error.set(error instanceof Error ? error.message : 'ไม่สามารถเชื่อมบัญชีได้');
     } finally {

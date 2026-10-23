@@ -6,6 +6,7 @@ type AppointmentRow = {
   patient_id: string;
   appointment_date: string;
   appointment_time: string;
+  appointment_end_time?: string | null;
   department: string;
   doctor: string;
   room?: string | null;
@@ -123,7 +124,7 @@ export async function runAppointmentReminders(): Promise<ReminderRunResult> {
   const appointmentDateTo = addDays(reminderDate, daysBefore);
   const client = getClient();
   const { data: appointments, error } = await client.from('appointments')
-    .select('id, patient_id, appointment_date, appointment_time, department, doctor, room, purpose, notes')
+    .select('id, patient_id, appointment_date, appointment_time, appointment_end_time, department, doctor, room, purpose, notes')
     .gte('appointment_date', appointmentDateFrom)
     .lte('appointment_date', appointmentDateTo)
     // Once patient confirms or requests a reschedule, staff owns next action;

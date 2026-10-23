@@ -50,17 +50,11 @@ export class NewAppointmentComponent implements OnInit {
     custom_doctor: '',
     appointment_date: '',
     appointment_time: '',
+    appointment_end_time: '',
     room: '',
     purpose: '',
     notes: ''
   });
-
-  // Time slots
-  timeSlots = [
-    '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', 
-    '11:00', '11:30', '13:00', '13:30', '14:00', '14:30', 
-    '15:00', '15:30', '16:00'
-  ];
 
   // Appointment reference data
   departments = signal<AppointmentDepartment[]>([]);
@@ -86,8 +80,26 @@ export class NewAppointmentComponent implements OnInit {
     return doctor ? Math.max(doctor.max_patients_per_day - this.doctorAppointmentCount(), 0) : 0;
   });
 
-  // Minimum selectable date (today) - prevents backdated appointments
-  minDate = computed(() => toLocalDateString(new Date()));
+  // Date of the appointment being rescheduled (null for a brand-new appointment)
+  private rescheduleSourceDate = signal<string | null>(null);
+
+  // Minimum selectable date: today, and for a reschedule the day after the original
+  // appointment (a reschedule moves the appointment later, never earlier or onto the same day).
+  minDate = computed(() => {
+    const today = toLocalDateString(new Date());
+    const source = this.rescheduleSourceDate();
+    if (!source) return today;
+    const [year, month, day] = source.split('-').map(Number);
+    const dayAfter = toLocalDateString(new Date(year, month - 1, day + 1));
+    return dayAfter > today ? dayAfter : today;
+  });
+
+  private dateTooEarlyMessage() {
+    const source = this.rescheduleSourceDate();
+    return source && this.minDate() > toLocalDateString(new Date())
+      ? `วันนัดใหม่ต้องเป็นวันหลังวันนัดเดิม (${source}) กรุณาเลือกวันที่หลังจากนั้น`
+      : 'ไม่สามารถออกใบนัดย้อนหลังได้ กรุณาเลือกวันที่ปัจจุบันหรือวันถัดไป';
+  }
 
   // Services
   private router = inject(Router);
@@ -116,6 +128,13 @@ export class NewAppointmentComponent implements OnInit {
         .single();
       const patient = result.data as Patient | null;
       if (!patient) throw new Error('Patient not found');
+      if (this.rescheduleFromAppointmentId) {
+        const source = await this.supabaseService.getClient().from('appointments')
+          .select('appointment_date')
+          .eq('id', this.rescheduleFromAppointmentId)
+          .single();
+        this.rescheduleSourceDate.set((source.data as { appointment_date?: string } | null)?.appointment_date ?? null);
+      }
       this.selectedPatient.set(patient);
       this.currentStep.set(2);
     } catch (error) {
@@ -162,11 +181,25 @@ export class NewAppointmentComponent implements OnInit {
     void this.loadDoctorAppointmentCount();
   }
 
+  /** Picking a start time moves the end time to start + 30 min unless a later end is already set. */
   onTimeChange(value: string) {
     this.appointmentData.update(data => ({
       ...data,
-      appointment_time: value
+      appointment_time: value,
+      appointment_end_time: value && (!data.appointment_end_time || data.appointment_end_time <= value)
+        ? this.addMinutes(value, 30)
+        : data.appointment_end_time
     }));
+  }
+
+  onEndTimeChange(value: string) {
+    this.appointmentData.update(data => ({ ...data, appointment_end_time: value }));
+  }
+
+  private addMinutes(time: string, minutes: number) {
+    const [hours, mins] = time.split(':').map(Number);
+    const total = Math.min(hours * 60 + mins + minutes, 23 * 60 + 59);
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
   }
 
   onRoomChange(value: string) {
@@ -340,15 +373,19 @@ export class NewAppointmentComponent implements OnInit {
     if (this.currentStep() === 2) {
       // Validate form
       const data = this.appointmentData();
-      if (!data.department || !data.appointment_date || !data.appointment_time ||
+      if (!data.department || !data.appointment_date || !data.appointment_time || !data.appointment_end_time ||
           !data.room || !data.purpose) {
         await this.dialog.warning('กรุณากรอกข้อมูลให้ครบถ้วน');
+        return;
+      }
+      if (data.appointment_end_time <= data.appointment_time) {
+        await this.dialog.warning('เวลาเสร็จต้องหลังเวลาเริ่ม');
         return;
       }
 
       // Prevent backdated appointments
       if (data.appointment_date < this.minDate()) {
-        await this.dialog.warning('ไม่สามารถออกใบนัดย้อนหลังได้ กรุณาเลือกวันที่ปัจจุบันหรือวันถัดไป');
+        await this.dialog.warning(this.dateTooEarlyMessage());
         return;
       }
 
@@ -382,7 +419,7 @@ export class NewAppointmentComponent implements OnInit {
       }
 
       if (data.appointment_date < this.minDate()) {
-        await this.dialog.warning('ไม่สามารถออกใบนัดย้อนหลังได้ กรุณาเลือกวันที่ปัจจุบันหรือวันถัดไป');
+        await this.dialog.warning(this.dateTooEarlyMessage());
         return;
       }
 
@@ -391,6 +428,7 @@ export class NewAppointmentComponent implements OnInit {
         patient_id: patient.id,
         appointment_date: data.appointment_date,
         appointment_time: data.appointment_time,
+        appointment_end_time: data.appointment_end_time,
         department: data.department,
         doctor_id: this.isGeneralDepartment() ? null : data.doctor_id || null,
         doctor: this.getDoctorName(),
@@ -442,8 +480,36 @@ export class NewAppointmentComponent implements OnInit {
         await this.dialog.warning('ไม่สามารถเลื่อนนัดเป็นวันเดิมได้ กรุณาเลือกวันที่นัดใหม่');
         return;
       }
+      if (/rescheduled appointment must be after the original appointment date/i.test(errorMessage)) {
+        await this.dialog.warning('วันนัดใหม่ต้องเป็นวันหลังวันนัดเดิม กรุณาเลือกวันที่ใหม่');
+        return;
+      }
+      const overlapSlot = errorMessage.match(/appointment time overlaps an existing appointment \((\d{2}:\d{2}-\d{2}:\d{2})\)/i)?.[1];
+      if (overlapSlot) {
+        await this.dialog.warning(
+          `แพทย์ท่านนี้มีนัดช่วง ${overlapSlot.replace('-', ' - ')} น. ซึ่งทับกับเวลาที่เลือก\nเวลานัดต้องเริ่มหลังจากนัดก่อนหน้าสิ้นสุด กรุณาเลือกเวลาอื่น`,
+          'เวลานัดทับกัน'
+        );
+        return;
+      }
       if (/reschedule limit reached/i.test(errorMessage)) {
         await this.dialog.warning('ผู้ป่วยรายนี้ขอเลื่อนนัดครบกำหนดแล้ว ไม่สามารถออกใบนัดใหม่ในระบบได้ กรุณาติดต่อผู้ป่วยโดยตรง', 'เลื่อนนัดเกินกำหนด');
+        return;
+      }
+      const patientOverlapSlot = errorMessage.match(/patient already has an overlapping appointment \(([^)]+)\)/i)?.[1];
+      if (patientOverlapSlot) {
+        await this.dialog.warning(
+          `ผู้ป่วยรายนี้มีนัดช่วง ${patientOverlapSlot.replace('-', ' - ')} ซึ่งทับกับเวลาที่เลือก\nผู้ป่วยอยู่สองแผนกพร้อมกันไม่ได้ กรุณาเลือกเวลาอื่น`,
+          'ผู้ป่วยมีนัดเวลาทับกัน'
+        );
+        return;
+      }
+      const sameDepartmentDate = errorMessage.match(/patient already has an active appointment in this department(?: \((\d{4}-\d{2}-\d{2})\))?/i);
+      if (sameDepartmentDate) {
+        await this.dialog.warning(
+          `ผู้ป่วยรายนี้มีใบนัดแผนกนี้ค้างอยู่แล้ว${sameDepartmentDate[1] ? ` (วันที่ ${sameDepartmentDate[1]})` : ''}\nแต่ละแผนกออกใบนัดค้างได้ 1 ใบ กรุณาให้ผู้ป่วยมาตามนัดหรือเลื่อนใบนัดเดิมก่อน`,
+          'ผู้ป่วยมีใบนัดแผนกนี้แล้ว'
+        );
         return;
       }
       if (/patient already has an active appointment/i.test(errorMessage)) {

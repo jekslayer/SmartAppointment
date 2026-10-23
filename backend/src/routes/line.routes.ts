@@ -56,7 +56,7 @@ async function recordDelivery(lineUserId: string, message: string, status: 'sent
   if (error) console.error('Unable to record LINE delivery:', error.message);
 }
 
-type AppointmentNotification = { id: string; appointment_date: string; appointment_time: string; department: string; doctor: string; room?: string | null; purpose?: string | null; notes?: string | null; };
+type AppointmentNotification = { id: string; appointment_date: string; appointment_time: string; appointment_end_time?: string | null; department: string; doctor: string; room?: string | null; purpose?: string | null; notes?: string | null; };
 type NotificationResult = { attempted: boolean; sent: boolean; reason?: string; };
 type PatientAppointment = AppointmentNotification & { patient_id: string; status: string; created_at?: string | null; };
 
@@ -66,15 +66,29 @@ const DEFAULT_APPOINTMENT_MESSAGE = `ใบนัดพบแพทย์
 
 ท่านมีนัดพบแพทย์ดังนี้:
 วันที่: {{appointment_date}}
-เวลา: {{appointment_time}}
+เวลา: {{appointment_time}} - {{appointment_end_time}}
 แผนก: {{department}}
 แพทย์: {{doctor_name}}
 
 กรุณามาก่อนเวลานัด 30 นาที`;
 
+/** "09:00:00" + "09:30:00" -> "09:00 - 09:30"; without an end time the start is shown as before. */
+function formatAppointmentTime(appointment: { appointment_time: string; appointment_end_time?: string | null }) {
+  return appointment.appointment_end_time
+    ? `${appointment.appointment_time.slice(0, 5)} - ${appointment.appointment_end_time.slice(0, 5)}`
+    : appointment.appointment_time;
+}
+
+/**
+ * {{appointment_time}} is the START time and {{appointment_end_time}} the end time, so a
+ * template can read "{{appointment_time}} - {{appointment_end_time}}". Appointments without an
+ * end time drop the " - {{appointment_end_time}}" part instead of leaving a dangling dash.
+ */
 function renderAppointmentMessage(template: string, patientName: string, appointment: AppointmentNotification) {
-  const values: Record<string, string> = { patient_name: patientName, appointment_date: appointment.appointment_date, appointment_time: appointment.appointment_time, department: appointment.department, doctor_name: appointment.doctor, room: appointment.room || '-', purpose: appointment.purpose || '-', notes: appointment.notes || '-' };
-  return template.replace(/{{\s*([a-z_]+)\s*}}/gi, (_, key: string) => values[key.toLowerCase()] ?? '');
+  const endTime = appointment.appointment_end_time ? appointment.appointment_end_time.slice(0, 5) : '';
+  const source = endTime ? template : template.replace(/\s*[-–]\s*{{\s*appointment_end_time\s*}}/gi, '');
+  const values: Record<string, string> = { patient_name: patientName, appointment_date: appointment.appointment_date, appointment_time: appointment.appointment_time.slice(0, 5), appointment_end_time: endTime, department: appointment.department, doctor_name: appointment.doctor, room: appointment.room || '-', purpose: appointment.purpose || '-', notes: appointment.notes || '-' };
+  return source.replace(/{{\s*([a-z_]+)\s*}}/gi, (_, key: string) => values[key.toLowerCase()] ?? '');
 }
 
 /** Saves delivery status without allowing an unavailable LINE service to lose an appointment. */
@@ -127,7 +141,7 @@ async function linkPatientRichMenu(lineUserId: string) {
 }
 
 function appointmentDetailsMessage(appointment: AppointmentNotification) {
-  return ['ใบนัดล่าสุด', `วันที่: ${appointment.appointment_date}`, `เวลา: ${appointment.appointment_time} น.`, `แผนก: ${appointment.department}`, `แพทย์: ${appointment.doctor}`, `ห้อง: ${appointment.room || '-'}`, `วัตถุประสงค์: ${appointment.purpose || '-'}`].join('\n');
+  return ['ใบนัดล่าสุด', `วันที่: ${appointment.appointment_date}`, `เวลา: ${formatAppointmentTime(appointment)} น.`, `แผนก: ${appointment.department}`, `แพทย์: ${appointment.doctor}`, `ห้อง: ${appointment.room || '-'}`, `วัตถุประสงค์: ${appointment.purpose || '-'}`].join('\n');
 }
 
 export async function sendAppointmentNotification(appointment: AppointmentNotification, patient: { id: string; full_name: string }): Promise<NotificationResult> {
@@ -155,6 +169,54 @@ export async function sendAppointmentNotification(appointment: AppointmentNotifi
   }
 }
 
+type AppointmentPostbackAction = 'confirm' | 'reschedule' | 'confirm_yes' | 'reschedule_yes' | 'reminder_back';
+
+function appointmentPostbackData(action: AppointmentPostbackAction, appointmentId: string) {
+  return new URLSearchParams({ action, appointment_id: appointmentId }).toString();
+}
+
+function appointmentLabel(appointment: { department: string; appointment_date: string; appointment_time: string; appointment_end_time?: string | null }) {
+  return `แผนก${appointment.department}
+วันที่ ${appointment.appointment_date} เวลา ${formatShortTime(appointment)} น.`;
+}
+
+/** The reminder's Confirm / Reschedule card. It names the appointment: a patient may get several reminders in a day. */
+function reminderButtonsMessage(appointment: AppointmentNotification) {
+  return {
+    type: 'template',
+    altText: `โปรดยืนยันหรือขอเลื่อนนัดแผนก${appointment.department}`.slice(0, 400),
+    template: {
+      type: 'buttons',
+      text: `นัด${appointmentLabel(appointment)}
+ต้องการดำเนินการอย่างไร`.slice(0, 160),
+      actions: [
+        { type: 'postback', label: 'ยืนยันมาตามนัด', data: appointmentPostbackData('confirm', appointment.id) },
+        { type: 'postback', label: 'ขอเลื่อนนัด', data: appointmentPostbackData('reschedule', appointment.id) }
+      ]
+    }
+  };
+}
+
+/** Second step: asks the patient to confirm a tap before anything is saved, so a mis-tap changes nothing. */
+function postbackPromptMessage(kind: 'confirm' | 'reschedule', appointment: AppointmentNotification) {
+  const yes = kind === 'confirm' ? 'confirm_yes' : 'reschedule_yes';
+  const question = kind === 'confirm' ? 'ยืนยันมาตามนัด' : 'ขอเลื่อนนัด';
+  return {
+    type: 'template',
+    altText: `${question}แผนก${appointment.department} ใช่ไหม`.slice(0, 400),
+    template: {
+      type: 'buttons',
+      text: `${question}
+${appointmentLabel(appointment)}
+ใช่ไหม`.slice(0, 160),
+      actions: [
+        { type: 'postback', label: kind === 'confirm' ? 'ใช่ ยืนยันนัด' : 'ใช่ ขอเลื่อนนัด', data: appointmentPostbackData(yes, appointment.id) },
+        { type: 'postback', label: 'ไม่ใช่ เลือกใหม่', data: appointmentPostbackData('reminder_back', appointment.id) }
+      ]
+    }
+  };
+}
+
 /** Sends the configured pre-appointment reminder.  Duplicate protection lives
  * in the scheduler's appointment_reminders reservation, before this is called. */
 export async function sendAppointmentReminder(appointment: AppointmentNotification, patient: { id: string; full_name: string }): Promise<NotificationResult> {
@@ -173,26 +235,9 @@ export async function sendAppointmentReminder(appointment: AppointmentNotificati
     if (!template?.message_text?.trim()) return { attempted: false, sent: false, reason: 'reminder_template_not_configured' };
     const message = renderAppointmentMessage(template.message_text, patient.full_name, appointment);
     attempted = true;
-    const postbackData = (action: 'confirm' | 'reschedule') => new URLSearchParams({
-      action, appointment_id: appointment.id
-    }).toString();
     await lineRequest('/push', {
       to: link.line_user_id,
-      messages: [
-        { type: 'text', text: message },
-        {
-          type: 'template',
-          altText: 'โปรดยืนยันหรือขอเลื่อนนัด',
-          template: {
-            type: 'buttons',
-            text: 'ต้องการดำเนินการกับนัดนี้อย่างไร',
-            actions: [
-              { type: 'postback', label: 'ยืนยันมาตามนัด', data: postbackData('confirm') },
-              { type: 'postback', label: 'ขอเลื่อนนัด', data: postbackData('reschedule') }
-            ]
-          }
-        }
-      ]
+      messages: [{ type: 'text', text: message }, reminderButtonsMessage(appointment)]
     });
     await recordDelivery(link.line_user_id, message, 'sent');
     return { attempted: true, sent: true };
@@ -289,12 +334,10 @@ export async function checkInWithLiff(req: Request, res: Response, next: NextFun
 
     const appointmentDate = todayInBangkok();
     const { data: appointments, error: appointmentError } = await client.from('appointments')
-      .select('id, appointment_time, department, doctor, status')
+      .select('id, appointment_time, appointment_end_time, department, doctor, status')
       .eq('patient_id', link.patient_id).eq('appointment_date', appointmentDate)
       .in('status', ['pending', 'confirmed'])
-      // A patient-confirmed appointment is the explicit check-in target.  It
-      // must win over another still-pending appointment on the same day.
-      .order('status', { ascending: true }).order('appointment_time', { ascending: true }).limit(2);
+      .order('appointment_time', { ascending: true }).limit(20);
     if (appointmentError) throw appointmentError;
     if (!appointments?.length) {
       const { data: checkedIn, error: checkedInError } = await client.from('appointments')
@@ -308,27 +351,34 @@ export async function checkInWithLiff(req: Request, res: Response, next: NextFun
       if (noShow) return next(createError(409, lateCheckInMessage));
       return next(createError(404, 'No appointment can be checked in today'));
     }
-    const confirmedAppointments = appointments.filter(appointment => appointment.status === 'confirmed');
-    const checkInCandidates = confirmedAppointments.length ? confirmedAppointments : appointments;
-    if (checkInCandidates.length > 1) return next(createError(409, 'More than one appointment found today; contact staff'));
-
-    const appointment = checkInCandidates[0];
+    // A patient may have several appointments today (different departments, different times).
+    // One scan checks in the earliest one that has not started yet; scanning again later
+    // checks in the next. Appointments whose time has already passed are left for the
+    // automatic no-show job unless nothing upcoming remains.
     const now = bangkokDateTimeNow();
-    if (appointment.appointment_time <= now.time) {
+    const upcoming = appointments.filter(appointment => appointment.appointment_time > now.time);
+    if (!upcoming.length) {
       const { error: noShowError } = await client.from('appointments')
         .update({ status: 'no_show', updated_at: new Date().toISOString() })
-        .eq('id', appointment.id).in('status', ['pending', 'confirmed']);
+        .in('id', appointments.map(appointment => appointment.id)).in('status', ['pending', 'confirmed']);
       if (noShowError) throw noShowError;
+      // Already checked in to today's other appointments: this scan is just a repeat.
+      const { data: checkedInToday, error: checkedInTodayError } = await client.from('appointments')
+        .select('id').eq('patient_id', link.patient_id).eq('appointment_date', appointmentDate).eq('status', 'completed').limit(1);
+      if (checkedInTodayError) throw checkedInTodayError;
+      if (checkedInToday?.length) return res.json({ checkedIn: true, alreadyCheckedIn: true });
       return next(createError(409, lateCheckInMessage));
     }
 
+    const target = upcoming[0];
     const { data: updated, error: updateError } = await client.from('appointments')
       .update({ status: 'completed', updated_at: new Date().toISOString() })
-      .eq('id', checkInCandidates[0].id).in('status', ['pending', 'confirmed'])
-      .select('id, appointment_time, department, doctor').maybeSingle();
+      .eq('id', target.id).in('status', ['pending', 'confirmed'])
+      .select('id, appointment_time, appointment_end_time, department, doctor').maybeSingle();
     if (updateError) throw updateError;
     if (!updated) return next(createError(409, 'Appointment status already changed; contact staff'));
-    res.json({ checkedIn: true, appointment: updated });
+    const remaining = upcoming.slice(1).map(({ appointment_time, appointment_end_time, department }) => ({ appointment_time, appointment_end_time, department }));
+    res.json({ checkedIn: true, appointment: updated, remaining });
   } catch (error) { next(error); }
 }
 
@@ -338,22 +388,67 @@ async function patientIdForLineUser(lineUserId: string) {
   return data?.patient_id as string | undefined;
 }
 
-async function currentAppointment(patientId: string): Promise<PatientAppointment | null> {
+const APPOINTMENT_COLUMNS = 'id, patient_id, appointment_date, appointment_time, appointment_end_time, department, doctor, room, purpose, notes, status, created_at';
+
+/** Appointments the patient still has to attend, soonest first. */
+async function activeAppointments(patientId: string): Promise<PatientAppointment[]> {
   const { data, error } = await getClient().from('appointments')
-    .select('id, patient_id, appointment_date, appointment_time, department, doctor, room, purpose, notes, status, created_at')
-    .eq('patient_id', patientId).in('status', ['pending', 'confirmed']).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    .select(APPOINTMENT_COLUMNS)
+    .eq('patient_id', patientId).in('status', ['pending', 'confirmed'])
+    .order('appointment_date', { ascending: true }).order('appointment_time', { ascending: true }).limit(50);
   if (error) throw error;
-  return data as PatientAppointment | null;
+  return (data || []) as PatientAppointment[];
 }
 
-async function hasAwaitingReplacementAppointment(patientId: string) {
-  const { data, error } = await getClient().from('appointments').select('id')
+/** Rescheduled appointments still waiting for staff to issue the replacement. */
+async function awaitingReplacementAppointments(patientId: string) {
+  const { data, error } = await getClient().from('appointments')
+    .select('department, appointment_date')
     .eq('patient_id', patientId)
     .eq('status', 'rescheduled')
     .is('rescheduled_to_appointment_id', null)
-    .limit(1);
+    .order('appointment_date', { ascending: true })
+    .limit(20);
   if (error) throw error;
-  return Boolean(data?.length);
+  return (data || []) as Array<{ department: string; appointment_date: string }>;
+}
+
+type PatientReply = { text: string; quickReplies?: Array<{ label: string; data: string }> };
+
+const STATUS_LABELS: Record<string, string> = { pending: 'รอยืนยัน', confirmed: 'ยืนยันแล้ว' };
+const MAX_LISTED_APPOINTMENTS = 8;
+const MAX_QUICK_REPLIES = 13;
+
+/** "08:00:00" -> "08:00"; with an end time "08:00 - 08:20". */
+function formatShortTime(appointment: { appointment_time: string; appointment_end_time?: string | null }) {
+  const start = appointment.appointment_time.slice(0, 5);
+  return appointment.appointment_end_time ? `${start} - ${appointment.appointment_end_time.slice(0, 5)}` : start;
+}
+
+/** One appointment keeps the familiar detail card; several are listed soonest first. */
+function appointmentsListMessage(appointments: PatientAppointment[], awaiting: Array<{ department: string; appointment_date: string }>) {
+  if (appointments.length === 1 && !awaiting.length) return appointmentDetailsMessage(appointments[0]);
+  const lines = [appointments.length ? `ใบนัดของท่าน (${appointments.length} รายการ)` : 'ท่านไม่มีใบนัดที่รอเข้ารับบริการในขณะนี้'];
+  appointments.slice(0, MAX_LISTED_APPOINTMENTS).forEach((appointment, index) => {
+    lines.push(
+      '',
+      `${index + 1}) วันที่ ${appointment.appointment_date} เวลา ${formatShortTime(appointment)} น.`,
+      `แผนก: ${appointment.department} | แพทย์: ${appointment.doctor}`,
+      `ห้อง: ${appointment.room || '-'} | สถานะ: ${STATUS_LABELS[appointment.status] || appointment.status}`
+    );
+  });
+  if (appointments.length > MAX_LISTED_APPOINTMENTS) lines.push('', `และอีก ${appointments.length - MAX_LISTED_APPOINTMENTS} รายการ`);
+  if (awaiting.length) {
+    lines.push('', 'รอเจ้าหน้าที่ออกใบนัดใหม่:', ...awaiting.map(item => `- แผนก${item.department} (นัดเดิมวันที่ ${item.appointment_date})`));
+  }
+  return lines.join('\n');
+}
+
+function quickReplyLabel(appointment: PatientAppointment) {
+  const date = appointment.appointment_date;
+  const when = ` ${date.slice(8, 10)}/${date.slice(5, 7)} ${appointment.appointment_time.slice(0, 5)}`;
+  // LINE limits quick reply labels to 20 characters: shorten the department, never the date/time.
+  return `${appointment.department.slice(0, 20 - when.length)}${when}`;
 }
 
 // A reschedule can be requested at any time before the appointment starts.
@@ -364,60 +459,102 @@ function canRequestReschedule(appointmentDate: string, appointmentTime: string) 
 
 const rescheduleLimitMessage ='ท่านขอเลื่อนนัดครบ 3 ครั้งแล้ว กรุณาติดต่อโรงพยาบาลหรือแผนกที่นัดหมาย';
 
-async function applyPatientRichMenuPostback(event: LineEvent): Promise<string | null> {
-  const lineUserId = event.source?.userId;
-  const action = event.postback?.data ? new URLSearchParams(event.postback.data).get('action') : null;
-  if (!lineUserId || !['view_appointment', 'request_reschedule', 'department_contacts'].includes(action || '')) return null;
-  const patientId = await patientIdForLineUser(lineUserId);
-  if (!patientId) return 'ไม่พบบัญชีผู้ป่วยที่เชื่อมกับ LINE นี้';
-  if (action === 'department_contacts') {
-    const { data, error } = await getClient().from('departments').select('name, phone').eq('is_active', true).order('name');
-    if (error) throw error;
-    return data?.length ? ['เบอร์ติดต่อแผนก', ...data.map((department: { name: string; phone?: string | null }) => `${department.name}: ${department.phone?.trim() || 'ยังไม่มีเบอร์ติดต่อ'}`)].join('\n') : 'ยังไม่มีข้อมูลแผนกสำหรับติดต่อ';
-  }
-  const appointment = await currentAppointment(patientId);
-  // A linked LINE account may still belong to a patient with no active appointment.
-  // Keep department contacts available, but do not expose or change appointment state.
-  if (!appointment) {
-    if (action === 'view_appointment') {
-      return 'ไม่พบใบนัดปัจจุบันของท่าน หากต้องการนัดหมายหรือตรวจสอบข้อมูล กรุณาติดต่อโรงพยาบาล';
-    }
-    return 'ไม่พบใบนัดปัจจุบัน';
-  }
-  if (action === 'view_appointment') {
-    if (appointment) return appointmentDetailsMessage(appointment);
-    return (await hasAwaitingReplacementAppointment(patientId)) ? 'เจ้าหน้าที่กำลังออกใบนัดใหม่ ระบบจะส่งใบนัดใหม่ให้ภายหลัง' : 'ไม่พบใบนัดปัจจุบัน';
-  }
-  if (!appointment) return (await hasAwaitingReplacementAppointment(patientId)) ? 'ได้รับคำขอเลื่อนนัดแล้ว เจ้าหน้าที่กำลังออกใบนัดใหม่' : 'ไม่พบใบนัดที่สามารถขอเลื่อนได้';
+/** Marks one appointment as a reschedule request and returns the text to tell the patient. */
+async function requestRescheduleOf(patientId: string, appointment: PatientAppointment): Promise<string> {
   if (await hasReachedRescheduleLimit(patientId, appointment.id)) return rescheduleLimitMessage;
   if (!canRequestReschedule(appointment.appointment_date, appointment.appointment_time)) return 'ใบนัดนี้เลยเวลานัดแล้ว ไม่สามารถขอเลื่อนได้ กรุณาติดต่อโรงพยาบาลหรือแผนกที่นัดหมาย';
   const { data: updated, error } = await getClient().from('appointments').update({ status: 'rescheduled', updated_at: new Date().toISOString() })
     .eq('id', appointment.id).in('status', ['pending', 'confirmed']).select('id').maybeSingle();
   if (error) throw error;
-  return updated ? 'บันทึกคำขอเลื่อนนัดแล้ว เจ้าหน้าที่จะออกใบนัดใหม่และส่งให้ทาง LINE' : 'สถานะใบนัดเปลี่ยนแล้ว กรุณาลองใหม่อีกครั้ง';
+  return updated
+    ? `บันทึกคำขอเลื่อนนัดแผนก${appointment.department} วันที่ ${appointment.appointment_date} แล้ว เจ้าหน้าที่จะออกใบนัดใหม่และส่งให้ทาง LINE`
+    : 'สถานะใบนัดเปลี่ยนแล้ว กรุณาลองใหม่อีกครั้ง';
 }
 
-async function applyAppointmentPostback(event: LineEvent): Promise<'confirmed' | 'rescheduled' | 'reschedule_limit_reached' | null> {
+const MENU_ACTIONS = ['view_appointment', 'request_reschedule', 'reschedule_pick', 'department_contacts'];
+
+async function applyPatientRichMenuPostback(event: LineEvent): Promise<PatientReply | null> {
+  const lineUserId = event.source?.userId;
+  const params = event.postback?.data ? new URLSearchParams(event.postback.data) : null;
+  const action = params?.get('action') ?? null;
+  if (!lineUserId || !params || !MENU_ACTIONS.includes(action || '')) return null;
+  const patientId = await patientIdForLineUser(lineUserId);
+  if (!patientId) return { text: 'ไม่พบบัญชีผู้ป่วยที่เชื่อมกับ LINE นี้' };
+  if (action === 'department_contacts') {
+    const { data, error } = await getClient().from('departments').select('name, phone').eq('is_active', true).order('name');
+    if (error) throw error;
+    return { text: data?.length ? ['เบอร์ติดต่อแผนก', ...data.map((department: { name: string; phone?: string | null }) => `${department.name}: ${department.phone?.trim() || 'ยังไม่มีเบอร์ติดต่อ'}`)].join('\n') : 'ยังไม่มีข้อมูลแผนกสำหรับติดต่อ' };
+  }
+  // A linked LINE account may belong to a patient with no active appointment. Keep department
+  // contacts available, but never expose or change appointment state for someone else.
+  const [appointments, awaiting] = await Promise.all([activeAppointments(patientId), awaitingReplacementAppointments(patientId)]);
+  if (action === 'view_appointment') {
+    return { text: appointments.length || awaiting.length
+      ? appointmentsListMessage(appointments, awaiting)
+      : 'ไม่พบใบนัดปัจจุบันของท่าน หากต้องการนัดหมายหรือตรวจสอบข้อมูล กรุณาติดต่อโรงพยาบาล' };
+  }
+  if (action === 'reschedule_pick') {
+    // Only appointments that belong to this patient are in the list, so a forged id finds nothing.
+    const chosen = appointments.find(appointment => appointment.id === params.get('appointment_id'));
+    return { text: chosen ? await requestRescheduleOf(patientId, chosen) : 'ไม่พบใบนัดนี้หรือสถานะเปลี่ยนแล้ว กรุณากดเลื่อนนัดจากเมนูอีกครั้ง' };
+  }
+  if (!appointments.length) {
+    return { text: awaiting.length
+      ? `ได้รับคำขอเลื่อนนัดแล้ว เจ้าหน้าที่กำลังออกใบนัดใหม่ (${awaiting.map(item => `แผนก${item.department}`).join(', ')})`
+      : 'ไม่พบใบนัดที่สามารถขอเลื่อนได้' };
+  }
+  if (appointments.length === 1) return { text: await requestRescheduleOf(patientId, appointments[0]) };
+  const choices = appointments.filter(appointment => canRequestReschedule(appointment.appointment_date, appointment.appointment_time)).slice(0, MAX_QUICK_REPLIES);
+  if (!choices.length) return { text: 'ใบนัดของท่านเลยเวลานัดแล้วทั้งหมด ไม่สามารถขอเลื่อนได้ กรุณาติดต่อโรงพยาบาลหรือแผนกที่นัดหมาย' };
+  return {
+    text: 'ต้องการเลื่อนใบนัดใบไหน กรุณาเลือกจากปุ่มด้านล่าง',
+    quickReplies: choices.map(appointment => ({
+      label: quickReplyLabel(appointment),
+      data: new URLSearchParams({ action: 'reschedule_pick', appointment_id: appointment.id }).toString()
+    }))
+  };
+}
+
+type PostbackOutcome = {
+  result: 'confirmed' | 'rescheduled' | 'reschedule_limit_reached' | 'already_processed' | 'confirm_prompt' | 'reschedule_prompt' | 'show_card';
+  appointment: AppointmentNotification;
+};
+
+/**
+ * Buttons on the reminder card. "confirm"/"reschedule" only ASK the patient to confirm the tap;
+ * nothing is saved until "confirm_yes"/"reschedule_yes", so a mis-tap changes nothing.
+ * "reminder_back" re-sends the original card.
+ */
+async function applyAppointmentPostback(event: LineEvent): Promise<PostbackOutcome | null> {
   const lineUserId = event.source?.userId;
   const data = event.postback?.data;
   if (!lineUserId || !data) return null;
   const params = new URLSearchParams(data);
   const appointmentId = params.get('appointment_id');
   const action = params.get('action');
-  const status = action === 'confirm' ? 'confirmed' : action === 'reschedule' ? 'rescheduled' : null;
-  if (!appointmentId || !status) return null;
+  if (!appointmentId || !['confirm', 'reschedule', 'confirm_yes', 'reschedule_yes', 'reminder_back'].includes(action || '')) return null;
 
-  // Only the LINE account linked to this appointment's patient may change it.
+  // Only the LINE account linked to this appointment's patient may act on it.
   const client = getClient();
   const { data: appointment, error } = await client.from('appointments')
-    .select('id, patient_id')
+    .select('id, patient_id, appointment_date, appointment_time, appointment_end_time, department, doctor, status')
     .eq('id', appointmentId).single();
   if (error || !appointment?.patient_id) return null;
   const link = await getPatientLineLink(appointment.patient_id);
   if (link?.line_user_id !== lineUserId) return null;
-  if (status === 'rescheduled' && await hasReachedRescheduleLimit(appointment.patient_id, appointment.id)) {
-    return 'reschedule_limit_reached';
+
+  const summary = appointment as unknown as AppointmentNotification;
+  const wantsReschedule = action === 'reschedule' || action === 'reschedule_yes';
+  // Only an appointment still awaiting a response can be confirmed or rescheduled from the card.
+  if (appointment.status !== 'pending') return { result: 'already_processed', appointment: summary };
+  if (wantsReschedule && await hasReachedRescheduleLimit(appointment.patient_id, appointment.id)) {
+    return { result: 'reschedule_limit_reached', appointment: summary };
   }
+  if (action === 'reminder_back') return { result: 'show_card', appointment: summary };
+  if (action === 'confirm') return { result: 'confirm_prompt', appointment: summary };
+  if (action === 'reschedule') return { result: 'reschedule_prompt', appointment: summary };
+
+  const status = action === 'confirm_yes' ? 'confirmed' : 'rescheduled';
   // First valid response wins. The status predicate makes this atomic, so a
   // repeated tap or a competing confirm/reschedule tap cannot overwrite it.
   const { data: updatedAppointment, error: updateError } = await client.from('appointments')
@@ -427,7 +564,30 @@ async function applyAppointmentPostback(event: LineEvent): Promise<'confirmed' |
     .select('id')
     .maybeSingle();
   if (updateError) throw updateError;
-  return updatedAppointment ? status : null;
+  return { result: updatedAppointment ? status : 'already_processed', appointment: summary };
+}
+
+/** What to send back for a card tap: a question, the card again, or the final confirmation text. */
+function postbackReplyMessages({ result, appointment }: PostbackOutcome) {
+  const label = `แผนก${appointment.department} วันที่ ${appointment.appointment_date} เวลา ${formatShortTime(appointment)} น.`;
+  switch (result) {
+    case 'confirm_prompt': return [postbackPromptMessage('confirm', appointment)];
+    case 'reschedule_prompt': return [postbackPromptMessage('reschedule', appointment)];
+    case 'show_card': return [reminderButtonsMessage(appointment)];
+    case 'confirmed': return [{ type: 'text', text: `บันทึกการยืนยันนัด${label} เรียบร้อยแล้ว` }];
+    case 'rescheduled': return [{ type: 'text', text: `บันทึกคำขอเลื่อนนัด${label} เรียบร้อยแล้ว เจ้าหน้าที่จะออกใบนัดใหม่ให้` }];
+    case 'reschedule_limit_reached': return [{ type: 'text', text: rescheduleLimitMessage }];
+    default: return [{ type: 'text', text: `ใบนัด${label} ได้รับการดำเนินการแล้ว` }];
+  }
+}
+
+function toLineTextMessage(reply: PatientReply) {
+  return {
+    type: 'text', text: reply.text,
+    ...(reply.quickReplies?.length ? {
+      quickReply: { items: reply.quickReplies.map(item => ({ type: 'action', action: { type: 'postback', label: item.label, data: item.data } })) }
+    } : {})
+  };
 }
 
 /** Must be registered before express.json() so LINE's signature checks the exact request bytes. */
@@ -440,21 +600,18 @@ export async function lineWebhook(req: Request, res: Response, next: NextFunctio
     const payload = JSON.parse(raw.toString('utf8')) as { events?: LineEvent[] };
     for (const event of payload.events || []) {
       if (event.type === 'postback') {
-        const patientMessage = await applyPatientRichMenuPostback(event);
-        if (patientMessage && event.replyToken) {
-          try { await lineRequest('/reply', { replyToken: event.replyToken, messages: [{ type: 'text', text: patientMessage }] }); }
-          catch (replyError) { console.error('Unable to reply to patient Rich Menu:', replyError); }
+        const patientReply = await applyPatientRichMenuPostback(event);
+        if (patientReply) {
+          if (event.replyToken) {
+            try { await lineRequest('/reply', { replyToken: event.replyToken, messages: [toLineTextMessage(patientReply)] }); }
+            catch (replyError) { console.error('Unable to reply to patient Rich Menu:', replyError); }
+          }
           continue;
         }
-        const status = await applyAppointmentPostback(event);
-        if (status && event.replyToken) {
-          const message = status === 'confirmed'
-            ? 'บันทึกการยืนยันนัดเรียบร้อยแล้ว'
-            : status === 'reschedule_limit_reached'
-              ? rescheduleLimitMessage
-              : 'บันทึกคำขอเลื่อนนัดเรียบร้อยแล้ว เจ้าหน้าที่จะออกใบนัดใหม่ให้';
+        const outcome = await applyAppointmentPostback(event);
+        if (outcome && event.replyToken) {
           try {
-            await lineRequest('/reply', { replyToken: event.replyToken, messages: [{ type: 'text', text: message }] });
+            await lineRequest('/reply', { replyToken: event.replyToken, messages: postbackReplyMessages(outcome) });
           } catch (replyError) {
             console.error('Unable to reply to appointment postback:', replyError);
           }

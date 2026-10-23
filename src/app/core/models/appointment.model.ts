@@ -8,6 +8,7 @@ export interface Appointment {
   doctor: string;
   appointment_date: string;
   appointment_time: string;
+  appointment_end_time?: string | null;
   room: string;
   purpose: string;
   notes?: string;
