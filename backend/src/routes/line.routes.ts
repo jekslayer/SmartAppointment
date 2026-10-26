@@ -401,7 +401,7 @@ async function activeAppointments(patientId: string): Promise<PatientAppointment
   return (data || []) as PatientAppointment[];
 }
 
-type PatientReply = { text: string; quickReplies?: Array<{ label: string; data: string }> };
+type PatientReply = { text: string; quickReplies?: Array<{ label: string; data: string }>; message?: Record<string, unknown> };
 
 const STATUS_LABELS: Record<string, string> = { pending: 'รอยืนยัน', confirmed: 'ยืนยันแล้ว' };
 const MAX_LISTED_APPOINTMENTS = 8;
@@ -444,10 +444,40 @@ function canRequestReschedule(appointmentDate: string, appointmentTime: string) 
 
 const rescheduleLimitMessage ='ท่านขอเลื่อนนัดครบ 3 ครั้งแล้ว กรุณาติดต่อโรงพยาบาลหรือแผนกที่นัดหมาย';
 
-/** Marks one appointment as a reschedule request and returns the text to tell the patient. */
-async function requestRescheduleOf(patientId: string, appointment: PatientAppointment): Promise<string> {
+/** Why this appointment cannot be rescheduled right now, or null when it can. */
+async function rescheduleBlockedReason(patientId: string, appointment: PatientAppointment): Promise<string | null> {
   if (await hasReachedRescheduleLimit(patientId, appointment.id)) return rescheduleLimitMessage;
   if (!canRequestReschedule(appointment.appointment_date, appointment.appointment_time)) return 'ใบนัดนี้เลยเวลานัดแล้ว ไม่สามารถขอเลื่อนได้ กรุณาติดต่อโรงพยาบาลหรือแผนกที่นัดหมาย';
+  return null;
+}
+
+/** The menu never reschedules on one tap: it asks first, so a mis-tap changes nothing. */
+function rescheduleConfirmMessage(appointment: PatientAppointment) {
+  return {
+    type: 'template',
+    altText: `ขอเลื่อนนัดแผนก${appointment.department} ใช่ไหม`.slice(0, 400),
+    template: {
+      type: 'buttons',
+      text: `ขอเลื่อนนัด\n${appointmentLabel(appointment)}\nใช่ไหม`.slice(0, 160),
+      actions: [
+        { type: 'postback', label: 'ใช่ ขอเลื่อนนัด', data: new URLSearchParams({ action: 'reschedule_confirm', appointment_id: appointment.id }).toString() },
+        { type: 'postback', label: 'ไม่ใช่ ยกเลิก', data: new URLSearchParams({ action: 'reschedule_cancel' }).toString() }
+      ]
+    }
+  };
+}
+
+/** Asks the patient to confirm, unless the appointment can no longer be rescheduled at all. */
+async function askRescheduleConfirmation(patientId: string, appointment: PatientAppointment): Promise<PatientReply> {
+  const blocked = await rescheduleBlockedReason(patientId, appointment);
+  if (blocked) return { text: blocked };
+  return { text: `ขอเลื่อนนัดแผนก${appointment.department} ใช่ไหม`, message: rescheduleConfirmMessage(appointment) };
+}
+
+/** Marks one appointment as a reschedule request and returns the text to tell the patient. */
+async function requestRescheduleOf(patientId: string, appointment: PatientAppointment): Promise<string> {
+  const blocked = await rescheduleBlockedReason(patientId, appointment);
+  if (blocked) return blocked;
   const { data: updated, error } = await getClient().from('appointments').update({ status: 'rescheduled', updated_at: new Date().toISOString() })
     .eq('id', appointment.id).in('status', ['pending', 'confirmed']).select('id').maybeSingle();
   if (error) throw error;
@@ -456,7 +486,7 @@ async function requestRescheduleOf(patientId: string, appointment: PatientAppoin
     : 'สถานะใบนัดเปลี่ยนแล้ว กรุณาลองใหม่อีกครั้ง';
 }
 
-const MENU_ACTIONS = ['view_appointment', 'request_reschedule', 'reschedule_pick', 'reschedule_cancel', 'department_contacts'];
+const MENU_ACTIONS = ['view_appointment', 'request_reschedule', 'reschedule_pick', 'reschedule_confirm', 'reschedule_cancel', 'department_contacts'];
 
 async function applyPatientRichMenuPostback(event: LineEvent): Promise<PatientReply | null> {
   const lineUserId = event.source?.userId;
@@ -480,13 +510,15 @@ async function applyPatientRichMenuPostback(event: LineEvent): Promise<PatientRe
       ? appointmentsListMessage(appointments)
       : 'ไม่พบใบนัดปัจจุบันของท่าน หากต้องการนัดหมายหรือตรวจสอบข้อมูล กรุณาติดต่อโรงพยาบาล' };
   }
-  if (action === 'reschedule_pick') {
+  if (action === 'reschedule_pick' || action === 'reschedule_confirm') {
     // Only appointments that belong to this patient are in the list, so a forged id finds nothing.
     const chosen = appointments.find(appointment => appointment.id === params.get('appointment_id'));
-    return { text: chosen ? await requestRescheduleOf(patientId, chosen) : 'ไม่พบใบนัดนี้หรือสถานะเปลี่ยนแล้ว กรุณากดเลื่อนนัดจากเมนูอีกครั้ง' };
+    if (!chosen) return { text: 'ไม่พบใบนัดนี้หรือสถานะเปลี่ยนแล้ว กรุณากดเลื่อนนัดจากเมนูอีกครั้ง' };
+    // Picking only asks for confirmation; nothing is saved until the patient answers "ใช่".
+    return action === 'reschedule_pick' ? askRescheduleConfirmation(patientId, chosen) : { text: await requestRescheduleOf(patientId, chosen) };
   }
   if (!appointments.length) return { text: 'ไม่พบใบนัดปัจจุบัน' };
-  if (appointments.length === 1) return { text: await requestRescheduleOf(patientId, appointments[0]) };
+  if (appointments.length === 1) return askRescheduleConfirmation(patientId, appointments[0]);
   // One slot is kept for "ยกเลิก": LINE offers no close button on the quick reply bar, so tapping it is how a patient dismisses it.
   const choices = appointments.filter(appointment => canRequestReschedule(appointment.appointment_date, appointment.appointment_time)).slice(0, MAX_QUICK_REPLIES - 1);
   if (!choices.length) return { text: 'ใบนัดของท่านเลยเวลานัดแล้วทั้งหมด ไม่สามารถขอเลื่อนได้ กรุณาติดต่อโรงพยาบาลหรือแผนกที่นัดหมาย' };
@@ -569,6 +601,7 @@ function postbackReplyMessages({ result, appointment }: PostbackOutcome) {
 }
 
 function toLineTextMessage(reply: PatientReply) {
+  if (reply.message) return reply.message;
   return {
     type: 'text', text: reply.text,
     ...(reply.quickReplies?.length ? {
