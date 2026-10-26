@@ -390,27 +390,15 @@ async function patientIdForLineUser(lineUserId: string) {
 
 const APPOINTMENT_COLUMNS = 'id, patient_id, appointment_date, appointment_time, appointment_end_time, department, doctor, room, purpose, notes, status, created_at';
 
-/** Appointments the patient still has to attend, soonest first. */
+/** Appointments the patient still has to attend (today or later), soonest first. Past dates are history, never listed. */
 async function activeAppointments(patientId: string): Promise<PatientAppointment[]> {
   const { data, error } = await getClient().from('appointments')
     .select(APPOINTMENT_COLUMNS)
     .eq('patient_id', patientId).in('status', ['pending', 'confirmed'])
+    .gte('appointment_date', todayInBangkok())
     .order('appointment_date', { ascending: true }).order('appointment_time', { ascending: true }).limit(50);
   if (error) throw error;
   return (data || []) as PatientAppointment[];
-}
-
-/** Rescheduled appointments still waiting for staff to issue the replacement. */
-async function awaitingReplacementAppointments(patientId: string) {
-  const { data, error } = await getClient().from('appointments')
-    .select('department, appointment_date')
-    .eq('patient_id', patientId)
-    .eq('status', 'rescheduled')
-    .is('rescheduled_to_appointment_id', null)
-    .order('appointment_date', { ascending: true })
-    .limit(20);
-  if (error) throw error;
-  return (data || []) as Array<{ department: string; appointment_date: string }>;
 }
 
 type PatientReply = { text: string; quickReplies?: Array<{ label: string; data: string }> };
@@ -426,9 +414,9 @@ function formatShortTime(appointment: { appointment_time: string; appointment_en
 }
 
 /** One appointment keeps the familiar detail card; several are listed soonest first. */
-function appointmentsListMessage(appointments: PatientAppointment[], awaiting: Array<{ department: string; appointment_date: string }>) {
-  if (appointments.length === 1 && !awaiting.length) return appointmentDetailsMessage(appointments[0]);
-  const lines = [appointments.length ? `ใบนัดของท่าน (${appointments.length} รายการ)` : 'ท่านไม่มีใบนัดที่รอเข้ารับบริการในขณะนี้'];
+function appointmentsListMessage(appointments: PatientAppointment[]) {
+  if (appointments.length === 1) return appointmentDetailsMessage(appointments[0]);
+  const lines = [`ใบนัดของท่าน (${appointments.length} รายการ)`];
   appointments.slice(0, MAX_LISTED_APPOINTMENTS).forEach((appointment, index) => {
     lines.push(
       '',
@@ -438,9 +426,6 @@ function appointmentsListMessage(appointments: PatientAppointment[], awaiting: A
     );
   });
   if (appointments.length > MAX_LISTED_APPOINTMENTS) lines.push('', `และอีก ${appointments.length - MAX_LISTED_APPOINTMENTS} รายการ`);
-  if (awaiting.length) {
-    lines.push('', 'รอเจ้าหน้าที่ออกใบนัดใหม่:', ...awaiting.map(item => `- แผนก${item.department} (นัดเดิมวันที่ ${item.appointment_date})`));
-  }
   return lines.join('\n');
 }
 
@@ -489,10 +474,10 @@ async function applyPatientRichMenuPostback(event: LineEvent): Promise<PatientRe
   }
   // A linked LINE account may belong to a patient with no active appointment. Keep department
   // contacts available, but never expose or change appointment state for someone else.
-  const [appointments, awaiting] = await Promise.all([activeAppointments(patientId), awaitingReplacementAppointments(patientId)]);
+  const appointments = await activeAppointments(patientId);
   if (action === 'view_appointment') {
-    return { text: appointments.length || awaiting.length
-      ? appointmentsListMessage(appointments, awaiting)
+    return { text: appointments.length
+      ? appointmentsListMessage(appointments)
       : 'ไม่พบใบนัดปัจจุบันของท่าน หากต้องการนัดหมายหรือตรวจสอบข้อมูล กรุณาติดต่อโรงพยาบาล' };
   }
   if (action === 'reschedule_pick') {
@@ -500,11 +485,7 @@ async function applyPatientRichMenuPostback(event: LineEvent): Promise<PatientRe
     const chosen = appointments.find(appointment => appointment.id === params.get('appointment_id'));
     return { text: chosen ? await requestRescheduleOf(patientId, chosen) : 'ไม่พบใบนัดนี้หรือสถานะเปลี่ยนแล้ว กรุณากดเลื่อนนัดจากเมนูอีกครั้ง' };
   }
-  if (!appointments.length) {
-    return { text: awaiting.length
-      ? `ได้รับคำขอเลื่อนนัดแล้ว เจ้าหน้าที่กำลังออกใบนัดใหม่ (${awaiting.map(item => `แผนก${item.department}`).join(', ')})`
-      : 'ไม่พบใบนัดที่สามารถขอเลื่อนได้' };
-  }
+  if (!appointments.length) return { text: 'ไม่พบใบนัดปัจจุบัน' };
   if (appointments.length === 1) return { text: await requestRescheduleOf(patientId, appointments[0]) };
   // One slot is kept for "ยกเลิก": LINE offers no close button on the quick reply bar, so tapping it is how a patient dismisses it.
   const choices = appointments.filter(appointment => canRequestReschedule(appointment.appointment_date, appointment.appointment_time)).slice(0, MAX_QUICK_REPLIES - 1);
