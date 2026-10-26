@@ -471,13 +471,15 @@ async function requestRescheduleOf(patientId: string, appointment: PatientAppoin
     : 'สถานะใบนัดเปลี่ยนแล้ว กรุณาลองใหม่อีกครั้ง';
 }
 
-const MENU_ACTIONS = ['view_appointment', 'request_reschedule', 'reschedule_pick', 'department_contacts'];
+const MENU_ACTIONS = ['view_appointment', 'request_reschedule', 'reschedule_pick', 'reschedule_cancel', 'department_contacts'];
 
 async function applyPatientRichMenuPostback(event: LineEvent): Promise<PatientReply | null> {
   const lineUserId = event.source?.userId;
   const params = event.postback?.data ? new URLSearchParams(event.postback.data) : null;
   const action = params?.get('action') ?? null;
   if (!lineUserId || !params || !MENU_ACTIONS.includes(action || '')) return null;
+  // Dismisses the reschedule chooser without touching any appointment.
+  if (action === 'reschedule_cancel') return { text: 'ไม่มีการเปลี่ยนแปลงใบนัดของท่าน' };
   const patientId = await patientIdForLineUser(lineUserId);
   if (!patientId) return { text: 'ไม่พบบัญชีผู้ป่วยที่เชื่อมกับ LINE นี้' };
   if (action === 'department_contacts') {
@@ -504,14 +506,18 @@ async function applyPatientRichMenuPostback(event: LineEvent): Promise<PatientRe
       : 'ไม่พบใบนัดที่สามารถขอเลื่อนได้' };
   }
   if (appointments.length === 1) return { text: await requestRescheduleOf(patientId, appointments[0]) };
-  const choices = appointments.filter(appointment => canRequestReschedule(appointment.appointment_date, appointment.appointment_time)).slice(0, MAX_QUICK_REPLIES);
+  // One slot is kept for "ยกเลิก": LINE offers no close button on the quick reply bar, so tapping it is how a patient dismisses it.
+  const choices = appointments.filter(appointment => canRequestReschedule(appointment.appointment_date, appointment.appointment_time)).slice(0, MAX_QUICK_REPLIES - 1);
   if (!choices.length) return { text: 'ใบนัดของท่านเลยเวลานัดแล้วทั้งหมด ไม่สามารถขอเลื่อนได้ กรุณาติดต่อโรงพยาบาลหรือแผนกที่นัดหมาย' };
   return {
-    text: 'ต้องการเลื่อนใบนัดใบไหน กรุณาเลือกจากปุ่มด้านล่าง',
-    quickReplies: choices.map(appointment => ({
-      label: quickReplyLabel(appointment),
-      data: new URLSearchParams({ action: 'reschedule_pick', appointment_id: appointment.id }).toString()
-    }))
+    text: 'ต้องการเลื่อนใบนัดใบไหน กรุณาเลือกจากปุ่มด้านล่าง หรือกด "ยกเลิก" หากไม่ต้องการเลื่อน',
+    quickReplies: [
+      ...choices.map(appointment => ({
+        label: quickReplyLabel(appointment),
+        data: new URLSearchParams({ action: 'reschedule_pick', appointment_id: appointment.id }).toString()
+      })),
+      { label: 'ยกเลิก', data: new URLSearchParams({ action: 'reschedule_cancel' }).toString() }
+    ]
   };
 }
 
